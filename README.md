@@ -1,36 +1,132 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# stay-front
 
-## Getting Started
+Frontend del proyecto **Stay**, construido con [Next.js](https://nextjs.org) 16, React 19 y Tailwind CSS 4.
 
-First, run the development server:
+---
+
+## Guía de inicio para desarrolladores
+
+### 1. Requisitos previos
+
+Asegúrate de tener instalado lo siguiente antes de comenzar:
+
+| Herramienta | Versión mínima  | Enlace              |
+| ----------- | --------------- | ------------------- |
+| Node.js     | 18.x o superior | https://nodejs.org  |
+| Bun         | 1.x o superior  | https://bun.sh      |
+| Git         | 2.x o superior  | https://git-scm.com |
+
+Verifica las versiones instaladas:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+node -v
+bun -v
+git --version
+```
+
+---
+
+### 2. Clonar el repositorio
+
+```bash
+git clone https://github.com/walter1705/stay-front.git
+cd stay-front
+```
+
+---
+
+### 3. Cambiar a la rama de trabajo
+
+Consulta las ramas disponibles:
+
+```bash
+git branch -a
+```
+
+Cámbiate a la rama en la que vas a trabajar (por ejemplo `main`):
+
+```bash
+git checkout main
+```
+
+O crea una rama nueva a partir de la rama principal:
+
+```bash
+git checkout -b feature/nombre-de-la-feature main
+```
+
+Verifica que estés en la rama correcta:
+
+```bash
+git branch
+```
+
+---
+
+### 4. Instalar dependencias
+
+```bash
+bun install
+```
+
+---
+
+### 5. Iniciar el servidor de desarrollo
+
+```bash
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre [http://localhost:3000](http://localhost:3000) en el navegador para ver la aplicación.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+La aplicación se recarga automáticamente al guardar cambios en cualquier archivo.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+### 6. Scripts disponibles
 
-To learn more about Next.js, take a look at the following resources:
+| Comando         | Descripción                                   |
+| --------------- | --------------------------------------------- |
+| `bun dev`       | Inicia el servidor de desarrollo              |
+| `bun run build` | Genera el build de producción                 |
+| `bun start`     | Inicia el servidor con el build de producción |
+| `bun run lint`  | Ejecuta el linter (ESLint)                    |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 7. Estructura del proyecto
 
-## Deploy on Vercel
+```
+stay-front/
+├── app/
+│   ├── globals.css      # Estilos globales (Tailwind CSS)
+│   ├── layout.tsx       # Layout raíz de la aplicación
+│   └── page.tsx         # Página de inicio
+├── public/              # Archivos estáticos
+├── next.config.ts       # Configuración de Next.js
+└── tsconfig.json        # Configuración de TypeScript
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 8. Flujo de trabajo recomendado
+
+1. Sincroniza la rama principal antes de crear una nueva rama:
+   ```bash
+   git checkout main
+   git pull origin main
+   ```
+2. Crea tu rama de trabajo:
+   ```bash
+   git checkout -b feature/mi-feature
+   ```
+3. Realiza tus cambios y haz commits descriptivos:
+   ```bash
+   git add .
+   git commit -m "feat: descripción del cambio"
+   ```
+4. Sube la rama al repositorio remoto:
+   ```bash
+   git push origin feature/mi-feature
+   ```
+5. Abre un **Pull Request** hacia `main` en GitHub.
