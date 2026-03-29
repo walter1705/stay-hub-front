@@ -3,8 +3,8 @@
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { login, signup, type LoginRequest, type SignupRequest } from "@/lib/api/auth"
-
-const TOKEN_KEY = "token"
+import { getSessionFromToken, setToken } from "@/lib/auth/session"
+import { getDefaultDashboardPath } from "@/lib/dashboard/roles"
 
 /**
  * Hook for authentication logic.
@@ -29,8 +29,11 @@ export function useAuth() {
     }
 
     if (result.data?.token) {
-      localStorage.setItem(TOKEN_KEY, result.data.token)
-      router.push("/")
+      setToken(result.data.token)
+      const session = getSessionFromToken(result.data.token)
+      const redirectPath = getDefaultDashboardPath(session?.roles ?? ["GUEST"])
+      router.push(redirectPath)
+      setIsLoading(false)
       return true
     }
 

@@ -4,6 +4,8 @@ if (!API_BASE_URL) {
   throw new Error("NEXT_PUBLIC_API_URL environment variable is not defined")
 }
 
+const TOKEN_KEY = "token"
+
 interface ApiResponse<T> {
   data?: T
   error?: string
@@ -15,19 +17,27 @@ export async function apiClient<T>(
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   const url = `${API_BASE_URL}${endpoint}`
+  const token = typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null
+  const headers = new Headers(options.headers)
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json")
+  }
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`)
+  }
 
   const config: RequestInit = {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    headers,
   }
 
   try {
     const response = await fetch(url, config)
 
     if (!response.ok) {
+      if (response.status === 401 && typeof window !== "undefined") {
+        localStorage.removeItem(TOKEN_KEY)
+      }
       const errorData = await response.json().catch(() => ({}))
       return { error: errorData.message || `Error: ${response.status}` }
     }

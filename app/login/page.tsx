@@ -11,6 +11,7 @@ export default function LoginPage() {
           src="/images/rural-house-hero.jpg"
           alt="Beautiful rural countryside cottage surrounded by nature"
           fill
+          sizes="(max-width: 1024px) 0vw, 60vw"
           className="object-cover"
           priority
         />

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Eye, EyeOff, Mail, Lock, User, Phone, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
+import { useToast } from "@/hooks/use-toast"
+import { getCurrentSession } from "@/lib/auth/session"
+import { getDefaultDashboardPath } from "@/lib/dashboard/roles"
 
 interface FormData {
   email: string
@@ -21,9 +25,11 @@ interface FormData {
 }
 
 export function AuthForm() {
+  const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [activeTab, setActiveTab] = useState("login")
   const { isLoading, error, handleLogin, handleSignup, clearError } = useAuth()
+  const { toast } = useToast()
   
   const [formData, setFormData] = useState<FormData>({
     email: "",
@@ -34,6 +40,13 @@ export function AuthForm() {
     profilePicture: "",
     roles: ["GUEST"]
   })
+
+  useEffect(() => {
+    const session = getCurrentSession()
+    if (session) {
+      router.replace(getDefaultDashboardPath(session.roles))
+    }
+  }, [router])
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -74,6 +87,10 @@ export function AuthForm() {
       })
       
       if (success) {
+        toast({
+          title: "Account created",
+          description: "You can now sign in with your credentials.",
+        })
         setActiveTab("login")
         setFormData(prev => ({ ...prev, password: "" }))
       }
