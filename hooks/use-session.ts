@@ -6,8 +6,12 @@ import { clearToken, getCurrentSession, type AuthSession } from "@/lib/auth/sess
 type SessionStatus = "loading" | "authenticated" | "unauthenticated"
 
 export function useSession() {
-  const [session, setSession] = useState<AuthSession | null>(() => getCurrentSession())
-  const [status, setStatus] = useState<SessionStatus>(() => (getCurrentSession() ? "authenticated" : "unauthenticated"))
+  const [session, setSession] = useState<AuthSession | null>(null)
+  const [status, setStatus] = useState<SessionStatus>("loading")
+
+  useEffect(() => {
+    refresh();
+  }, []);
 
   const refresh = useCallback(() => {
     const currentSession = getCurrentSession()

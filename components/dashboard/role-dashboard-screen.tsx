@@ -392,7 +392,29 @@ function HostDashboard({ section }: { section?: string }) {
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={() => {
+                  onClick={(e) => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    const hasFutureBookings = hostBookings.some((booking) => {
+                      const isSameHouse = booking.house === row.name;
+                      const isActiveBooking = booking.status === "Confirmed" || booking.status === "Pending";
+                      const bookingDate = new Date(booking.checkIn);
+                      const isFuture = bookingDate >= today;
+                      
+                      return isSameHouse && isActiveBooking && isFuture;
+                    });
+
+                    if (hasFutureBookings) {
+                      e.preventDefault();
+                      toast({
+                        title: "Accion denegada",
+                        description: "No se puede dar de baja una casa con reservas futuras.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+
                     setProperties((current) =>
                       current.map((property) =>
                         property.id === row.id ? { ...property, status: "Inactive", occupancy: "0%", estimatedIncome: "$0" } : property,
