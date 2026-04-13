@@ -57,7 +57,6 @@ export interface AdminUserRow {
   status: string
 }
 
-<<<<<<< HEAD
 export interface AlertRow {
   id: string
   title: string
@@ -65,7 +64,25 @@ export interface AlertRow {
   severity: "High" | "Medium" | "Low"
   createdAt: string
 }
-=======
+
+export interface AuditRow {
+  id: string
+  actor: string
+  action: string
+  target: string
+  createdAt: string
+}
+
+export interface HostReviewRow {
+  id: string
+  guest: string
+  house: string
+  rating: number
+  comment: string
+  createdAt: string
+}
+
+/** Seed data for payment notices — replaced by real API when available */
 export const guestPayments: PaymentRow[] = [
   {
     id: "p1",
@@ -88,21 +105,3 @@ export const guestPayments: PaymentRow[] = [
     method: "Transferencia",
   },
 ]
->>>>>>> b178c72619a73b01c873d7163a941fd0eba81070
-
-export interface AuditRow {
-  id: string
-  actor: string
-  action: string
-  target: string
-  createdAt: string
-}
-
-export interface HostReviewRow {
-  id: string
-  guest: string
-  house: string
-  rating: number
-  comment: string
-  createdAt: string
-}

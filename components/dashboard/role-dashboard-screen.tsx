@@ -1,13 +1,9 @@
 "use client"
 
 import { useMemo, useState } from "react"
-<<<<<<< HEAD
-import { Calendar, CircleDollarSign, Home, MessageSquare, Shield, Users } from "lucide-react"
+import { AlertTriangle, Calendar, CircleDollarSign, Home, MessageSquare, Shield, Users } from "lucide-react"
 import { changePassword } from "@/lib/api/auth"
 import { deactivateAccommodation } from "@/lib/api/accommodations"
-=======
-import { AlertTriangle, Calendar, CircleDollarSign, Home, MessageSquare, Shield, Users } from "lucide-react"
->>>>>>> b178c72619a73b01c873d7163a941fd0eba81070
 import { roleSegmentToAppRole, type DashboardRoleSegment, isDashboardRoleSegment } from "@/lib/dashboard/roles"
 import {
   type BookingRow,
@@ -19,6 +15,7 @@ import {
   type AlertRow,
   type AuditRow,
   type HostReviewRow,
+  guestPayments,
 } from "@/lib/dashboard/mock-data"
 import { useToast } from "@/hooks/use-toast"
 import { useSession } from "@/hooks/use-session"
@@ -43,6 +40,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -70,7 +68,7 @@ function getPaymentColumns(): DataTableColumn<PaymentRow>[] {
   return [
     { id: "booking", header: "Reserva", cell: (row) => row.bookingCode },
     { id: "dueDate", header: "Vencimiento", cell: (row) => row.dueDate },
-    { id: "amount", header: "Monto", cell: (row) => row.amount },
+    { id: "amount", header: "Monto (20%)", cell: (row) => row.amount },
     { id: "method", header: "Metodo", cell: (row) => row.method },
     { id: "status", header: "Estado", cell: (row) => <StatusBadge value={row.status} /> },
   ]
@@ -118,11 +116,7 @@ function ChangePasswordCard() {
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
-<<<<<<< HEAD
   const [isLoading, setIsLoading] = useState(false)
-=======
-  const [selectedPayment, setSelectedPayment] = useState<(typeof guestPayments)[0] | null>(null)
->>>>>>> b178c72619a73b01c873d7163a941fd0eba81070
 
   const handleSubmit = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -179,11 +173,13 @@ function ChangePasswordCard() {
 
 function GuestDashboard({ section }: { section?: string }) {
   const { session } = useSession()
+  const { toast } = useToast()
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("all")
+  const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null)
 
   const bookings: BookingRow[] = []
-  const payments: PaymentRow[] = []
+  const payments: PaymentRow[] = guestPayments
   const reviews: ReviewRow[] = []
 
   const filteredBookings = useMemo(
@@ -200,7 +196,7 @@ function GuestDashboard({ section }: { section?: string }) {
       return p.bookingCode.toLowerCase().includes(query.toLowerCase()) &&
         (status === "all" || p.status.toLowerCase() === status)
     }),
-    [query, status],
+    [query, status, payments],
   )
 
   const filteredReviews = useMemo(
@@ -225,39 +221,47 @@ function GuestDashboard({ section }: { section?: string }) {
 
     return (
       <div className="space-y-6">
-<<<<<<< HEAD
-        <PageHeader title="Inicio" description="Resumen de tu actividad en StayHub." />
-=======
         <PageHeader
-          title="Dashboard Cliente"
-          description="Controla reservas activas, pagos pendientes y proximas fechas de viaje en una vista unificada."
+          title="Inicio"
+          description="Controla reservas activas, pagos pendientes y proximas fechas de viaje."
         />
 
         {urgentPayments.map((p) => (
-          <Alert key={p.id} className="border-amber-300 bg-amber-50 text-amber-900">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <Alert key={p.id} className="border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
             <AlertTitle className="font-semibold">Recordatorio de pago pendiente</AlertTitle>
             <AlertDescription className="space-y-1">
               <p>
-                Tienes un pago del 20% de la reserva <span className="font-mono font-bold">{p.bookingCode}</span> con vencimiento el <span className="font-semibold">{new Date(p.dueDate).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" })}</span>.
+                Tienes un pago del 20% de la reserva{" "}
+                <span className="font-mono font-bold">{p.bookingCode}</span> con vencimiento el{" "}
+                <span className="font-semibold">
+                  {new Date(p.dueDate).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" })}
+                </span>.
               </p>
               <p>
-                Monto a pagar: <span className="font-bold">{p.amount}</span> &nbsp;|&nbsp; Número de cuenta: <span className="font-mono font-semibold">{p.accountNumber}</span>
+                Monto a pagar: <span className="font-bold">{p.amount}</span>{" "}
+                &nbsp;|&nbsp; Número de cuenta:{" "}
+                <span className="font-mono font-semibold">{p.accountNumber}</span>
               </p>
-              <Button size="sm" variant="outline" className="mt-2 border-amber-400 text-amber-800 hover:bg-amber-100" onClick={() => setSelectedPayment(p)}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 border-amber-400 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/30"
+                onClick={() => setSelectedPayment(p)}
+              >
                 Ver detalle del aviso
               </Button>
             </AlertDescription>
           </Alert>
         ))}
 
->>>>>>> b178c72619a73b01c873d7163a941fd0eba81070
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="Reservas activas" value="—" hint="" trend={0} icon={Calendar} />
           <KpiCard label="Reservas pasadas" value="—" hint="" trend={0} icon={Home} />
-          <KpiCard label="Pagos pendientes" value="—" hint="" trend={0} icon={CircleDollarSign} />
+          <KpiCard label="Pagos pendientes" value={String(payments.filter(p => p.status === "Pending").length)} hint="" trend={0} icon={CircleDollarSign} />
           <KpiCard label="Comentarios" value="—" hint="" trend={0} icon={MessageSquare} />
         </div>
+
         <Card>
           <CardHeader>
             <CardTitle>Proximas reservas</CardTitle>
@@ -312,12 +316,12 @@ function GuestDashboard({ section }: { section?: string }) {
   }
 
   if (section === "payments") {
-    const paymentColumnsWithAction = [
+    const paymentColumnsWithAction: DataTableColumn<PaymentRow>[] = [
       ...getPaymentColumns(),
       {
         id: "notice",
         header: "Aviso",
-        cell: (row: (typeof guestPayments)[0]) =>
+        cell: (row) =>
           row.status !== "Paid" ? (
             <Button size="sm" variant="outline" onClick={() => setSelectedPayment(row)}>
               Ver aviso
@@ -346,15 +350,9 @@ function GuestDashboard({ section }: { section?: string }) {
         />
         <DataTable
           data={filteredPayments}
-<<<<<<< HEAD
-          columns={getPaymentColumns()}
-          emptyTitle="Sin pagos"
-          emptyDescription="Aqui apareceran los pagos de tus reservas."
-=======
           columns={paymentColumnsWithAction}
           emptyTitle="No hay pagos para mostrar"
           emptyDescription="No se encontraron pagos con esos filtros."
->>>>>>> b178c72619a73b01c873d7163a941fd0eba81070
           getRowKey={(row) => row.id}
         />
         <PaymentNoticeModal
@@ -488,7 +486,7 @@ function HostDashboard({ section }: { section?: string }) {
               <AlertDialogHeader>
                 <AlertDialogTitle>Dar de baja {row.name}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Esta accion desactivara el alojamiento. No podras revertirlo si tiene reservas futuras activas.
+                  Esta accion desactivara el alojamiento. No es posible si tiene reservas futuras activas.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
