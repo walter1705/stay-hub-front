@@ -1,9 +1,13 @@
 "use client"
 
 import { useMemo, useState } from "react"
+<<<<<<< HEAD
 import { Calendar, CircleDollarSign, Home, MessageSquare, Shield, Users } from "lucide-react"
 import { changePassword } from "@/lib/api/auth"
 import { deactivateAccommodation } from "@/lib/api/accommodations"
+=======
+import { AlertTriangle, Calendar, CircleDollarSign, Home, MessageSquare, Shield, Users } from "lucide-react"
+>>>>>>> b178c72619a73b01c873d7163a941fd0eba81070
 import { roleSegmentToAppRole, type DashboardRoleSegment, isDashboardRoleSegment } from "@/lib/dashboard/roles"
 import {
   type BookingRow,
@@ -24,6 +28,7 @@ import { HostPackagesView } from "@/components/dashboard/host-inventory-manager"
 import { HostAvailabilityView } from "@/components/dashboard/host-availability-view"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { PageHeader } from "@/components/dashboard/page-header"
+import { PaymentNoticeModal } from "@/components/dashboard/payment-notice-modal"
 import { RoleRouteGuard } from "@/components/dashboard/role-route-guard"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { TableFilters } from "@/components/dashboard/table-filters"
@@ -113,7 +118,11 @@ function ChangePasswordCard() {
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+<<<<<<< HEAD
   const [isLoading, setIsLoading] = useState(false)
+=======
+  const [selectedPayment, setSelectedPayment] = useState<(typeof guestPayments)[0] | null>(null)
+>>>>>>> b178c72619a73b01c873d7163a941fd0eba81070
 
   const handleSubmit = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -204,9 +213,45 @@ function GuestDashboard({ section }: { section?: string }) {
   )
 
   if (!section) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const urgentPayments = guestPayments.filter((p) => {
+      if (p.status !== "Pending" && p.status !== "Overdue") return false
+      const due = new Date(p.dueDate)
+      due.setHours(0, 0, 0, 0)
+      const daysLeft = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      return daysLeft <= 3
+    })
+
     return (
       <div className="space-y-6">
+<<<<<<< HEAD
         <PageHeader title="Inicio" description="Resumen de tu actividad en StayHub." />
+=======
+        <PageHeader
+          title="Dashboard Cliente"
+          description="Controla reservas activas, pagos pendientes y proximas fechas de viaje en una vista unificada."
+        />
+
+        {urgentPayments.map((p) => (
+          <Alert key={p.id} className="border-amber-300 bg-amber-50 text-amber-900">
+            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="font-semibold">Recordatorio de pago pendiente</AlertTitle>
+            <AlertDescription className="space-y-1">
+              <p>
+                Tienes un pago del 20% de la reserva <span className="font-mono font-bold">{p.bookingCode}</span> con vencimiento el <span className="font-semibold">{new Date(p.dueDate).toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" })}</span>.
+              </p>
+              <p>
+                Monto a pagar: <span className="font-bold">{p.amount}</span> &nbsp;|&nbsp; Número de cuenta: <span className="font-mono font-semibold">{p.accountNumber}</span>
+              </p>
+              <Button size="sm" variant="outline" className="mt-2 border-amber-400 text-amber-800 hover:bg-amber-100" onClick={() => setSelectedPayment(p)}>
+                Ver detalle del aviso
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ))}
+
+>>>>>>> b178c72619a73b01c873d7163a941fd0eba81070
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="Reservas activas" value="—" hint="" trend={0} icon={Calendar} />
           <KpiCard label="Reservas pasadas" value="—" hint="" trend={0} icon={Home} />
@@ -227,6 +272,12 @@ function GuestDashboard({ section }: { section?: string }) {
             />
           </CardContent>
         </Card>
+
+        <PaymentNoticeModal
+          payment={selectedPayment}
+          open={selectedPayment !== null}
+          onClose={() => setSelectedPayment(null)}
+        />
       </div>
     )
   }
@@ -261,6 +312,22 @@ function GuestDashboard({ section }: { section?: string }) {
   }
 
   if (section === "payments") {
+    const paymentColumnsWithAction = [
+      ...getPaymentColumns(),
+      {
+        id: "notice",
+        header: "Aviso",
+        cell: (row: (typeof guestPayments)[0]) =>
+          row.status !== "Paid" ? (
+            <Button size="sm" variant="outline" onClick={() => setSelectedPayment(row)}>
+              Ver aviso
+            </Button>
+          ) : (
+            <span className="text-sm text-muted-foreground">—</span>
+          ),
+      },
+    ]
+
     return (
       <div className="space-y-6">
         <PageHeader title="Pagos" description="Estado de pagos de tus reservas." />
@@ -279,10 +346,21 @@ function GuestDashboard({ section }: { section?: string }) {
         />
         <DataTable
           data={filteredPayments}
+<<<<<<< HEAD
           columns={getPaymentColumns()}
           emptyTitle="Sin pagos"
           emptyDescription="Aqui apareceran los pagos de tus reservas."
+=======
+          columns={paymentColumnsWithAction}
+          emptyTitle="No hay pagos para mostrar"
+          emptyDescription="No se encontraron pagos con esos filtros."
+>>>>>>> b178c72619a73b01c873d7163a941fd0eba81070
           getRowKey={(row) => row.id}
+        />
+        <PaymentNoticeModal
+          payment={selectedPayment}
+          open={selectedPayment !== null}
+          onClose={() => setSelectedPayment(null)}
         />
       </div>
     )
