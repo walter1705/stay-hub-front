@@ -15,7 +15,6 @@ import {
   type AlertRow,
   type AuditRow,
   type HostReviewRow,
-  guestPayments,
 } from "@/lib/dashboard/mock-data"
 import { useToast } from "@/hooks/use-toast"
 import { useSession } from "@/hooks/use-session"
@@ -179,7 +178,7 @@ function GuestDashboard({ section }: { section?: string }) {
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null)
 
   const bookings: BookingRow[] = []
-  const payments: PaymentRow[] = guestPayments
+  const payments: PaymentRow[] = []
   const reviews: ReviewRow[] = []
 
   const filteredBookings = useMemo(
@@ -211,7 +210,7 @@ function GuestDashboard({ section }: { section?: string }) {
   if (!section) {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const urgentPayments = guestPayments.filter((p) => {
+    const urgentPayments = payments.filter((p) => {
       if (p.status !== "Pending" && p.status !== "Overdue") return false
       const due = new Date(p.dueDate)
       due.setHours(0, 0, 0, 0)
