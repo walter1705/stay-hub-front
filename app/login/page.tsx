@@ -40,13 +40,13 @@ export default function LoginPage() {
 
             {/* Features */}
             <div className="mt-10 flex gap-8">
-              <Feature icon={TreesIcon} label="2,500+ Rural Homes" />
-              <Feature icon={MountainIcon} label="45+ Countries" />
+              <Feature icon={TreesIcon} label="Rural homes" />
+              <Feature icon={MountainIcon} label="Country side" />
             </div>
           </div>
-
+        
           {/* Testimonial */}
-          <div className="max-w-md">
+        {/*<div className="max-w-md">
             <blockquote className="text-white/90 italic leading-relaxed">
               &ldquo;The most peaceful week of my life. Waking up to birdsong and morning mist 
               over the hills was exactly what I needed.&rdquo;
@@ -58,7 +58,9 @@ export default function LoginPage() {
                 <div className="text-xs text-white/60">London, United Kingdom</div>
               </div>
             </div>
-          </div>
+          </div>*/}
+
+          
         </div>
       </div>
 

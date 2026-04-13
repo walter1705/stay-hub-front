@@ -16,7 +16,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Rustica | Rural Escapes',
+  title: 'Stay hub',
   description: 'Discover authentic countryside experiences. Book unique rural homes and reconnect with nature.',
   generator: 'v0.app',
   icons: {
