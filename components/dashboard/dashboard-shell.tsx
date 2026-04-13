@@ -107,9 +107,6 @@ export function DashboardShell({ children }: DashboardShellProps) {
               )
             })}
           </nav>
-          <div className="mt-auto rounded-xl border bg-muted/40 p-4 text-xs text-muted-foreground">
-            Dashboard basado en JWT + permisos por rol. Las acciones no expuestas en OpenAPI quedan en modo preparacion.
-          </div>
         </aside>
 
         <div className="flex flex-1 flex-col">
@@ -221,7 +218,7 @@ function DashboardBrand({ email }: { email?: string }) {
       <div className="inline-flex items-center gap-2 rounded-lg border px-3 py-2">
         <span className="font-serif text-xl">StayHub</span>
       </div>
-      <p className="text-sm text-muted-foreground">Sesion JWT activa para {email ?? "usuario"}.</p>
+      <p className="text-sm text-muted-foreground">{email ?? "Mi cuenta"}</p>
     </div>
   )
 }

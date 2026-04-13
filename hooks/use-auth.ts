@@ -2,13 +2,24 @@
 
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { login, signup, type LoginRequest, type SignupRequest } from "@/lib/api/auth"
+import {
+  login,
+  signup,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+  type LoginRequest,
+  type SignupRequest,
+  type ForgotPasswordRequest,
+  type ResetPasswordRequest,
+  type ChangePasswordRequest,
+} from "@/lib/api/auth"
 import { getSessionFromToken, setToken } from "@/lib/auth/session"
 import { getDefaultDashboardPath } from "@/lib/dashboard/roles"
 
 /**
  * Hook for authentication logic.
- * Handles login/signup API calls, loading state, and error handling.
+ * Handles login/signup/password flows, loading state, and error handling.
  */
 export function useAuth() {
   const router = useRouter()
@@ -64,7 +75,67 @@ export function useAuth() {
     return true
   }, [])
 
+  /** Request a password recovery code sent to user's email */
+  const handleForgotPassword = useCallback(async (data: ForgotPasswordRequest) => {
+    setIsLoading(true)
+    setError(null)
+
+    const result = await forgotPassword(data)
+
+    if (result.error) {
+      setError(result.error)
+      setIsLoading(false)
+      return false
+    }
+
+    setIsLoading(false)
+    return true
+  }, [])
+
+  /** Reset password using the recovery code received by email */
+  const handleResetPassword = useCallback(async (data: ResetPasswordRequest) => {
+    setIsLoading(true)
+    setError(null)
+
+    const result = await resetPassword(data)
+
+    if (result.error) {
+      setError(result.error)
+      setIsLoading(false)
+      return false
+    }
+
+    setIsLoading(false)
+    return true
+  }, [])
+
+  /** Change password for authenticated user */
+  const handleChangePassword = useCallback(async (data: ChangePasswordRequest) => {
+    setIsLoading(true)
+    setError(null)
+
+    const result = await changePassword(data)
+
+    if (result.error) {
+      setError(result.error)
+      setIsLoading(false)
+      return false
+    }
+
+    setIsLoading(false)
+    return true
+  }, [])
+
   const clearError = useCallback(() => setError(null), [])
 
-  return { isLoading, error, handleLogin, handleSignup, clearError }
+  return {
+    isLoading,
+    error,
+    handleLogin,
+    handleSignup,
+    handleForgotPassword,
+    handleResetPassword,
+    handleChangePassword,
+    clearError,
+  }
 }

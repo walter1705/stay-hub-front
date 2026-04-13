@@ -90,6 +90,132 @@ paths:
           description: Accommodation not found
           content:
             application/json:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags:
+        - Accommodations
+      summary: Deactivate accommodation
+      description: Soft deletes an accommodation if it has no future active reservations, validating if user is the owner.
+      operationId: deactivateAccommodation
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Accommodation id
+      responses:
+        '200':
+          description: Accommodation deactivated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Active future reservations exist
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Unauthorized action, user is not the owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Accommodation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v2/users/auth/forgot-password:
+    post:
+      tags:
+        - Users
+      summary: Forgot password
+      description: Generates a recovery code and sends it via email
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '200':
+          description: Recovery code sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v2/users/auth/reset-password:
+    post:
+      tags:
+        - Users
+      summary: Reset password
+      description: Resets user password using a recovery code
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid or expired recovery code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v2/users/auth/change-password:
+    put:
+      tags:
+        - Users
+      summary: Change password
+      description: Changes user's password requiring the current password
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Validation or rules error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Invalid current password
+          content:
+            application/json:
               schema:
                 $ref: '#/components/schemas/Error'
 components:
@@ -261,3 +387,51 @@ components:
       enum:
         - GUEST
         - HOST
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Operación realizada exitosamente
+      required:
+        - message
+    ForgotPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+      required:
+        - email
+    ResetPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: john.doe@example.com
+        code:
+          type: string
+          example: "123456"
+        newPassword:
+          type: string
+          pattern: ^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!])(?=\S+$).{8,}$
+          example: NewP@ssw0rd!
+      required:
+        - email
+        - code
+        - newPassword
+    ChangePasswordRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          example: OldP@ssw0rd123
+        newPassword:
+          type: string
+          pattern: ^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!])(?=\S+$).{8,}$
+          example: NewP@ssw0rd!
+      required:
+        - currentPassword
+        - newPassword

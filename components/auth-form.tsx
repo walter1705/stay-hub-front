@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
@@ -28,9 +35,18 @@ export function AuthForm() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [activeTab, setActiveTab] = useState("login")
-  const { isLoading, error, handleLogin, handleSignup, clearError } = useAuth()
+  const { isLoading, error, handleLogin, handleSignup, handleForgotPassword, handleResetPassword, clearError } = useAuth()
   const { toast } = useToast()
-  
+
+  // Forgot/reset password dialog state
+  const [forgotOpen, setForgotOpen] = useState(false)
+  const [forgotStep, setForgotStep] = useState<"email" | "code">("email")
+  const [forgotEmail, setForgotEmail] = useState("")
+  const [forgotCode, setForgotCode] = useState("")
+  const [forgotNewPassword, setForgotNewPassword] = useState("")
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotError, setForgotError] = useState<string | null>(null)
+
   const [formData, setFormData] = useState<FormData>({
     email: "",
     password: "",
@@ -66,6 +82,48 @@ export function AuthForm() {
     setActiveTab(value)
     clearError()
   }, [clearError])
+
+  const openForgotDialog = useCallback(() => {
+    setForgotStep("email")
+    setForgotEmail(formData.email)
+    setForgotCode("")
+    setForgotNewPassword("")
+    setForgotError(null)
+    setForgotOpen(true)
+  }, [formData.email])
+
+  const handleForgotSubmitEmail = useCallback(async () => {
+    if (!forgotEmail) {
+      setForgotError("Ingresá tu email")
+      return
+    }
+    setForgotLoading(true)
+    setForgotError(null)
+    const ok = await handleForgotPassword({ email: forgotEmail })
+    setForgotLoading(false)
+    if (!ok) {
+      setForgotError("No se pudo enviar el código. Verificá el email.")
+      return
+    }
+    setForgotStep("code")
+  }, [forgotEmail, handleForgotPassword])
+
+  const handleForgotSubmitReset = useCallback(async () => {
+    if (!forgotCode || !forgotNewPassword) {
+      setForgotError("Completá todos los campos")
+      return
+    }
+    setForgotLoading(true)
+    setForgotError(null)
+    const ok = await handleResetPassword({ email: forgotEmail, code: forgotCode, newPassword: forgotNewPassword })
+    setForgotLoading(false)
+    if (!ok) {
+      setForgotError("Código inválido o expirado. Intentá de nuevo.")
+      return
+    }
+    setForgotOpen(false)
+    toast({ title: "Contraseña restablecida", description: "Ya podés iniciar sesión con tu nueva contraseña." })
+  }, [forgotCode, forgotNewPassword, forgotEmail, handleResetPassword, toast])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -174,7 +232,11 @@ export function AuthForm() {
                 <Checkbox id="remember" className="border-border data-[state=checked]:bg-foreground data-[state=checked]:border-foreground" />
                 <span className="text-sm text-muted-foreground">Remember me</span>
               </label>
-              <button type="button" className="text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline">
+              <button
+                type="button"
+                onClick={openForgotDialog}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+              >
                 Forgot password?
               </button>
             </div>
@@ -349,6 +411,109 @@ export function AuthForm() {
         </form>
 
       </Tabs>
+
+      <Dialog open={forgotOpen} onOpenChange={setForgotOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {forgotStep === "email" ? "Recuperar contraseña" : "Ingresar código"}
+            </DialogTitle>
+            <DialogDescription>
+              {forgotStep === "email"
+                ? "Te enviaremos un código de recuperación a tu email."
+                : "Revisá tu bandeja de entrada e ingresá el código recibido."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {forgotError && (
+            <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+              {forgotError}
+            </div>
+          )}
+
+          {forgotStep === "email" ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="forgot-email">Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    placeholder="your@email.com"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="pl-10 h-11"
+                  />
+                </div>
+              </div>
+              <Button
+                className="w-full h-11"
+                onClick={handleForgotSubmitEmail}
+                disabled={forgotLoading}
+              >
+                {forgotLoading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="size-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
+                    Enviando...
+                  </span>
+                ) : (
+                  "Enviar código"
+                )}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="forgot-code">Código de recuperación</Label>
+                <Input
+                  id="forgot-code"
+                  type="text"
+                  placeholder="123456"
+                  value={forgotCode}
+                  onChange={(e) => setForgotCode(e.target.value)}
+                  className="h-11 tracking-widest text-center"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="forgot-new-password">Nueva contraseña</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    id="forgot-new-password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={forgotNewPassword}
+                    onChange={(e) => setForgotNewPassword(e.target.value)}
+                    className="pl-10 h-11"
+                  />
+                </div>
+              </div>
+              <Button
+                className="w-full h-11"
+                onClick={handleForgotSubmitReset}
+                disabled={forgotLoading}
+              >
+                {forgotLoading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="size-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
+                    Guardando...
+                  </span>
+                ) : (
+                  "Restablecer contraseña"
+                )}
+              </Button>
+              <button
+                type="button"
+                className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setForgotStep("email")}
+              >
+                Volver a ingresar email
+              </button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

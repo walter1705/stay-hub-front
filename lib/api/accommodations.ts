@@ -19,8 +19,19 @@ export interface AccommodationDetailResponse {
   available: boolean
 }
 
+export interface MessageResponse {
+  message: string
+}
+
 export async function getAccommodationById(id: number) {
   return apiClient<AccommodationDetailResponse>(`/api/v2/accommodations/${id}`, {
     method: "GET",
+  })
+}
+
+/** Soft-deletes an accommodation if it has no future active reservations */
+export async function deactivateAccommodation(id: number) {
+  return apiClient<MessageResponse>(`/api/v2/accommodations/${id}`, {
+    method: "DELETE",
   })
 }

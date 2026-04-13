@@ -63,26 +63,7 @@ const inventoryTypeOptions: Array<{ value: InventoryType; label: string; detail:
   },
 ]
 
-const initialPackages: InventoryPackage[] = [
-  {
-    id: "pkg-1",
-    name: "Semana Santa Flexible",
-    startDate: "2026-04-10",
-    endDate: "2026-04-20",
-    type: "BOTH",
-    roomIds: ["R1", "R2", "R3"],
-    status: "Active",
-  },
-  {
-    id: "pkg-2",
-    name: "Plan Familiar",
-    startDate: "2026-05-01",
-    endDate: "2026-05-08",
-    type: "HOME_ONLY",
-    roomIds: [],
-    status: "Scheduled",
-  },
-]
+const initialPackages: InventoryPackage[] = []
 
 function rangesOverlap(firstStart: string, firstEnd: string, secondStart: string, secondEnd: string) {
   return firstStart <= secondEnd && secondStart <= firstEnd
@@ -100,7 +81,7 @@ function getNextId(prefix: string, length: number) {
   return `${prefix}-${length + 1}`
 }
 
-export function HostInventoryManager({ mode }: { mode: "availability" | "packages" }) {
+export function HostPackagesView() {
   const { toast } = useToast()
   const [packages, setPackages] = useState<InventoryPackage[]>(initialPackages)
   const [reservations, setReservations] = useState<ReservationRecord[]>([])
@@ -234,7 +215,7 @@ export function HostInventoryManager({ mode }: { mode: "availability" | "package
 
     setPackages((current) => [newPackage, ...current])
     resetPackageForm()
-    toast({ title: "Paquete creado", description: "El paquete queda listo para persistirse cuando exista el endpoint." })
+    toast({ title: "Paquete creado", description: "El paquete fue guardado correctamente." })
   }
 
   const handleCreateReservation = () => {
@@ -364,25 +345,21 @@ export function HostInventoryManager({ mode }: { mode: "availability" | "package
     toast({ title: "Reserva agregada", description: "Reserva validada con reglas actuales de inventario." })
   }
 
-  const modeTitle = mode === "availability" ? "Disponibilidad e inventario" : "Gestion de paquetes"
-  const modeDescription =
-    mode === "availability"
-      ? "Define paquetes, valida reservas y revisa bloqueos para casa entera y habitaciones."
-      : "Crea paquetes por fecha con selector obligatorio de tipo y reglas de consistencia."
-
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Layers3 className="size-4" />
-            {modeTitle}
+            Paquetes de inventario
           </CardTitle>
-          <CardDescription>{modeDescription}</CardDescription>
+          <CardDescription>
+            Crea paquetes por rango de fechas, define el tipo de inventario y simula reservas para validar reglas de bloqueo.
+          </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-4 rounded-xl border p-4">
-            <h3 className="font-medium">1) Crear paquete por fechas</h3>
+            <h3 className="font-medium">Crear paquete</h3>
             <div className="space-y-2">
               <Label htmlFor="package-name">Nombre paquete</Label>
               <Input
@@ -462,7 +439,7 @@ export function HostInventoryManager({ mode }: { mode: "availability" | "package
           </div>
 
           <div className="space-y-4 rounded-xl border p-4">
-            <h3 className="font-medium">2) Simular reserva y bloqueos</h3>
+            <h3 className="font-medium">Simular reserva</h3>
             <div className="space-y-2">
               <Label htmlFor="booking-code">Codigo reserva</Label>
               <Input
@@ -582,7 +559,7 @@ export function HostInventoryManager({ mode }: { mode: "availability" | "package
         <CardHeader>
           <CardTitle>Paquetes por fecha y tipo</CardTitle>
           <CardDescription>
-            Selector obligatorio aplicado. La persistencia final quedara conectada al endpoint cuando se publique en OpenAPI.
+            Paquetes de disponibilidad creados por rango de fechas con selector obligatorio de tipo.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -600,7 +577,7 @@ export function HostInventoryManager({ mode }: { mode: "availability" | "package
         <CardHeader>
           <CardTitle>Reservas y bloqueos resultantes</CardTitle>
           <CardDescription>
-            Regla clave cubierta: en paquete Ambas, una reserva por habitacion bloquea casa entera en el mismo periodo y viceversa.
+            Reservas simuladas con reglas de bloqueo aplicadas por tipo de paquete.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

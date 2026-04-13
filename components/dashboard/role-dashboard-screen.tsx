@@ -2,33 +2,31 @@
 
 import { useMemo, useState } from "react"
 import { Calendar, CircleDollarSign, Home, MessageSquare, Shield, Users } from "lucide-react"
+import { changePassword } from "@/lib/api/auth"
+import { deactivateAccommodation } from "@/lib/api/accommodations"
 import { roleSegmentToAppRole, type DashboardRoleSegment, isDashboardRoleSegment } from "@/lib/dashboard/roles"
 import {
-  adminAlerts,
-  adminAudit,
-  adminUsers,
-  guestBookings,
-  guestPayments,
-  guestReviews,
-  hostBookings,
-  hostNotifications,
-  hostProperties,
-  hostReviews,
   type BookingRow,
   type PaymentRow,
   type PropertyRow,
   type ReviewRow,
+  type NotificationRow,
+  type AdminUserRow,
+  type AlertRow,
+  type AuditRow,
+  type HostReviewRow,
 } from "@/lib/dashboard/mock-data"
 import { useToast } from "@/hooks/use-toast"
+import { useSession } from "@/hooks/use-session"
 import { DataTable, type DataTableColumn } from "@/components/dashboard/data-table"
 import { GuestAccommodationSearch } from "@/components/dashboard/guest-accommodation-search"
-import { HostInventoryManager } from "@/components/dashboard/host-inventory-manager"
+import { HostPackagesView } from "@/components/dashboard/host-inventory-manager"
+import { HostAvailabilityView } from "@/components/dashboard/host-availability-view"
 import { KpiCard } from "@/components/dashboard/kpi-card"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { RoleRouteGuard } from "@/components/dashboard/role-route-guard"
 import { StatusBadge } from "@/components/dashboard/status-badge"
 import { TableFilters } from "@/components/dashboard/table-filters"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -89,7 +87,7 @@ export function RoleDashboardScreen({ roleSegment, section }: RoleDashboardScree
       <Card>
         <CardHeader>
           <CardTitle>Ruta no encontrada</CardTitle>
-          <CardDescription>El rol solicitado no existe en la arquitectura del dashboard.</CardDescription>
+          <CardDescription>El rol solicitado no existe en el sistema.</CardDescription>
         </CardHeader>
       </Card>
     )
@@ -101,74 +99,130 @@ export function RoleDashboardScreen({ roleSegment, section }: RoleDashboardScree
 }
 
 function renderRoleSection(role: DashboardRoleSegment, section?: string) {
-  if (role === "guest") {
-    return <GuestDashboard section={section} />
-  }
-
-  if (role === "host") {
-    return <HostDashboard section={section} />
-  }
-
+  if (role === "guest") return <GuestDashboard section={section} />
+  if (role === "host") return <HostDashboard section={section} />
   return <AdminDashboard section={section} />
 }
 
-function GuestDashboard({ section }: { section?: string }) {
+// ---------------------------------------------------------------------------
+// Change password card — shared between guest and host profile
+// ---------------------------------------------------------------------------
+
+function ChangePasswordCard() {
   const { toast } = useToast()
-  const [query, setQuery] = useState("")
-  const [status, setStatus] = useState("all")
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
-  const filteredBookings = useMemo(() => {
-    return guestBookings.filter((booking) => {
-      const matchesQuery = booking.code.toLowerCase().includes(query.toLowerCase()) || booking.house.toLowerCase().includes(query.toLowerCase())
-      const matchesStatus = status === "all" || booking.status.toLowerCase() === status
-      return matchesQuery && matchesStatus
-    })
-  }, [query, status])
+  const handleSubmit = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast({ title: "Completa todos los campos", variant: "destructive" })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Las contrasenas no coinciden", variant: "destructive" })
+      return
+    }
+    setIsLoading(true)
+    const result = await changePassword({ currentPassword, newPassword })
+    setIsLoading(false)
+    if (result.error) {
+      toast({ title: "No se pudo cambiar la contrasena", description: result.error, variant: "destructive" })
+      return
+    }
+    setCurrentPassword("")
+    setNewPassword("")
+    setConfirmPassword("")
+    toast({ title: "Contrasena actualizada correctamente" })
+  }
 
-  const filteredPayments = useMemo(() => {
-    return guestPayments.filter((payment) => {
-      const matchesQuery = payment.bookingCode.toLowerCase().includes(query.toLowerCase())
-      const matchesStatus = status === "all" || payment.status.toLowerCase() === status
-      return matchesQuery && matchesStatus
-    })
-  }, [query, status])
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Cambiar contrasena</CardTitle>
+        <CardDescription>Ingresa tu contrasena actual y elige una nueva.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-2">
+          <Label htmlFor="cp-current">Contrasena actual</Label>
+          <Input id="cp-current" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="cp-new">Nueva contrasena</Label>
+          <Input id="cp-new" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="cp-confirm">Confirmar nueva contrasena</Label>
+          <Input id="cp-confirm" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+        </div>
+        <Button onClick={handleSubmit} disabled={isLoading} className="w-full">
+          {isLoading ? "Guardando..." : "Guardar nueva contrasena"}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
 
-  const filteredReviews = useMemo(() => {
-    return guestReviews.filter((review) => {
-      const matchesQuery = review.house.toLowerCase().includes(query.toLowerCase()) || review.comment.toLowerCase().includes(query.toLowerCase())
-      const matchesStatus = status === "all" || review.status.toLowerCase() === status
-      return matchesQuery && matchesStatus
-    })
-  }, [query, status])
+// ---------------------------------------------------------------------------
+// Guest
+// ---------------------------------------------------------------------------
+
+function GuestDashboard({ section }: { section?: string }) {
+  const { session } = useSession()
+  const [query, setQuery] = useState("")
+  const [status, setStatus] = useState("all")
+
+  const bookings: BookingRow[] = []
+  const payments: PaymentRow[] = []
+  const reviews: ReviewRow[] = []
+
+  const filteredBookings = useMemo(
+    () => bookings.filter((b) => {
+      const q = query.toLowerCase()
+      return (b.code.toLowerCase().includes(q) || b.house.toLowerCase().includes(q)) &&
+        (status === "all" || b.status.toLowerCase() === status)
+    }),
+    [query, status],
+  )
+
+  const filteredPayments = useMemo(
+    () => payments.filter((p) => {
+      return p.bookingCode.toLowerCase().includes(query.toLowerCase()) &&
+        (status === "all" || p.status.toLowerCase() === status)
+    }),
+    [query, status],
+  )
+
+  const filteredReviews = useMemo(
+    () => reviews.filter((r) => {
+      const q = query.toLowerCase()
+      return (r.house.toLowerCase().includes(q) || r.comment.toLowerCase().includes(q)) &&
+        (status === "all" || r.status.toLowerCase() === status)
+    }),
+    [query, status],
+  )
 
   if (!section) {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Dashboard Cliente"
-          description="Controla reservas activas, pagos pendientes y proximas fechas de viaje en una vista unificada."
-        />
+        <PageHeader title="Inicio" description="Resumen de tu actividad en StayHub." />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Reservas activas" value="2" hint="vs mes anterior" trend={12} icon={Calendar} />
-          <KpiCard label="Reservas pasadas" value="9" hint="historico" trend={5} icon={Home} />
-          <KpiCard label="Pagos pendientes" value="1" hint="recordatorio 20%" trend={-8} icon={CircleDollarSign} />
-          <KpiCard label="Comentarios" value="2" hint="ultimo trimestre" trend={3} icon={MessageSquare} />
+          <KpiCard label="Reservas activas" value="—" hint="" trend={0} icon={Calendar} />
+          <KpiCard label="Reservas pasadas" value="—" hint="" trend={0} icon={Home} />
+          <KpiCard label="Pagos pendientes" value="—" hint="" trend={0} icon={CircleDollarSign} />
+          <KpiCard label="Comentarios" value="—" hint="" trend={0} icon={MessageSquare} />
         </div>
-
         <Card>
           <CardHeader>
-            <CardTitle>Proximas fechas</CardTitle>
-            <CardDescription>Revisa tu siguiente check-in y el estado del pago inicial.</CardDescription>
+            <CardTitle>Proximas reservas</CardTitle>
           </CardHeader>
           <CardContent>
             <DataTable
-              data={guestBookings.filter((booking) => booking.status !== "Completed")}
+              data={[]}
               columns={getBookingColumns()}
               emptyTitle="Sin reservas activas"
-              emptyDescription="Cuando tengas una nueva reserva, aparecera aqui."
+              emptyDescription="Cuando realices una reserva, aparecera aqui."
               getRowKey={(row) => row.id}
             />
           </CardContent>
@@ -180,10 +234,7 @@ function GuestDashboard({ section }: { section?: string }) {
   if (section === "bookings") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Reservas cliente"
-          description="Listado de reservas activas y pasadas con filtros por estado y codigo."
-        />
+        <PageHeader title="Mis reservas" description="Historial de reservas activas y pasadas." />
         <TableFilters
           searchValue={query}
           onSearchChange={setQuery}
@@ -201,8 +252,8 @@ function GuestDashboard({ section }: { section?: string }) {
         <DataTable
           data={filteredBookings}
           columns={getBookingColumns()}
-          emptyTitle="No hay reservas"
-          emptyDescription="Ajusta los filtros para ver resultados."
+          emptyTitle="Sin reservas"
+          emptyDescription="Todavia no tienes reservas registradas."
           getRowKey={(row) => row.id}
         />
       </div>
@@ -212,10 +263,7 @@ function GuestDashboard({ section }: { section?: string }) {
   if (section === "payments") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Pagos y recordatorios"
-          description="Gestiona pagos pendientes del 20% y estado de transferencias."
-        />
+        <PageHeader title="Pagos" description="Estado de pagos de tus reservas." />
         <TableFilters
           searchValue={query}
           onSearchChange={setQuery}
@@ -232,8 +280,8 @@ function GuestDashboard({ section }: { section?: string }) {
         <DataTable
           data={filteredPayments}
           columns={getPaymentColumns()}
-          emptyTitle="No hay pagos para mostrar"
-          emptyDescription="No se encontraron pagos con esos filtros."
+          emptyTitle="Sin pagos"
+          emptyDescription="Aqui apareceran los pagos de tus reservas."
           getRowKey={(row) => row.id}
         />
       </div>
@@ -243,14 +291,11 @@ function GuestDashboard({ section }: { section?: string }) {
   if (section === "reviews") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Historial de comentarios"
-          description="Consulta comentarios enviados por casa y su estado de publicacion."
-        />
+        <PageHeader title="Mis comentarios" description="Comentarios enviados sobre alojamientos." />
         <TableFilters
           searchValue={query}
           onSearchChange={setQuery}
-          searchPlaceholder="Buscar comentario o casa"
+          searchPlaceholder="Buscar por casa o comentario"
           statusValue={status}
           onStatusChange={setStatus}
           statuses={[
@@ -263,7 +308,7 @@ function GuestDashboard({ section }: { section?: string }) {
           data={filteredReviews}
           columns={getReviewColumns()}
           emptyTitle="Sin comentarios"
-          emptyDescription="Todavia no hay comentarios para mostrar."
+          emptyDescription="Aqui apareceran tus comentarios sobre alojamientos."
           getRowKey={(row) => row.id}
         />
       </div>
@@ -273,10 +318,7 @@ function GuestDashboard({ section }: { section?: string }) {
   if (section === "search") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Buscar casa"
-          description="Flujo funcional con OpenAPI actual: detalle de casa por id autenticado con JWT."
-        />
+        <PageHeader title="Buscar alojamiento" description="Consulta detalles y disponibilidad de alojamientos." />
         <GuestAccommodationSearch />
       </div>
     )
@@ -285,63 +327,28 @@ function GuestDashboard({ section }: { section?: string }) {
   if (section === "profile") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Perfil y seguridad"
-          description="Gestiona datos personales y deja listo el flujo de cambio de contrasena para conectar endpoint."
-        />
+        <PageHeader title="Mi perfil" description="Informacion de tu cuenta y seguridad." />
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Perfil</CardTitle>
-              <CardDescription>Datos sincronizados al iniciar sesion con JWT.</CardDescription>
+              <CardTitle>Datos de cuenta</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <p><span className="font-medium">Nombre:</span> Usuario StayHub</p>
-              <p><span className="font-medium">Email:</span> user@stayhub.app</p>
-              <p><span className="font-medium">Telefono:</span> +57 3000000000</p>
-              <p><span className="font-medium">Roles:</span> GUEST</p>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground mb-0.5">Email</p>
+                <p className="font-medium">{session?.email ?? "—"}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground mb-0.5">Roles</p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {session?.roles.map((role) => (
+                    <Badge key={role} variant="outline">{role}</Badge>
+                  ))}
+                </div>
+              </div>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Cambio de contrasena</CardTitle>
-              <CardDescription>Validado en frontend, pendiente endpoint backend en OpenAPI.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="current-password">Contrasena actual</Label>
-                <Input id="current-password" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-password">Nueva contrasena</Label>
-                <Input id="new-password" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirmar contrasena</Label>
-                <Input id="confirm-password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
-              </div>
-              <Button
-                onClick={() => {
-                  if (!currentPassword || !newPassword || !confirmPassword) {
-                    toast({ title: "Completa todos los campos", variant: "destructive" })
-                    return
-                  }
-                  if (newPassword !== confirmPassword) {
-                    toast({ title: "Las contrasenas no coinciden", variant: "destructive" })
-                    return
-                  }
-                  toast({
-                    title: "Listo para backend",
-                    description: "Formulario validado. Falta endpoint de cambio de contrasena para completar el flujo.",
-                  })
-                }}
-                className="w-full"
-              >
-                Guardar nueva contrasena
-              </Button>
-            </CardContent>
-          </Card>
+          <ChangePasswordCard />
         </div>
       </div>
     )
@@ -350,19 +357,38 @@ function GuestDashboard({ section }: { section?: string }) {
   return <UnknownSection section={section} />
 }
 
+// ---------------------------------------------------------------------------
+// Host
+// ---------------------------------------------------------------------------
+
 function HostDashboard({ section }: { section?: string }) {
+  const { session } = useSession()
   const { toast } = useToast()
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("all")
-  const [properties, setProperties] = useState(hostProperties)
+  const [properties, setProperties] = useState<PropertyRow[]>([])
 
-  const filteredProperties = useMemo(() => {
-    return properties.filter((property) => {
-      const matchesQuery = property.name.toLowerCase().includes(query.toLowerCase()) || property.code.toLowerCase().includes(query.toLowerCase())
-      const matchesStatus = status === "all" || property.status.toLowerCase() === status
-      return matchesQuery && matchesStatus
-    })
-  }, [properties, query, status])
+  const bookings: BookingRow[] = []
+  const notifications: NotificationRow[] = []
+  const reviews: HostReviewRow[] = []
+
+  const filteredProperties = useMemo(
+    () => properties.filter((p) => {
+      const q = query.toLowerCase()
+      return (p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q)) &&
+        (status === "all" || p.status.toLowerCase() === status)
+    }),
+    [properties, query, status],
+  )
+
+  const filteredBookings = useMemo(
+    () => bookings.filter((b) => {
+      const q = query.toLowerCase()
+      return (b.code.toLowerCase().includes(q) || b.house.toLowerCase().includes(q)) &&
+        (status === "all" || b.status.toLowerCase() === status)
+    }),
+    [query, status],
+  )
 
   const propertyColumns: DataTableColumn<PropertyRow>[] = [
     { id: "code", header: "Codigo", cell: (row) => row.code },
@@ -378,52 +404,33 @@ function HostDashboard({ section }: { section?: string }) {
         row.status === "Active" ? (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button size="sm" variant="outline">
-                Dar de baja
-              </Button>
+              <Button size="sm" variant="outline">Dar de baja</Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Dar de baja {row.name}?</AlertDialogTitle>
+                <AlertDialogTitle>Dar de baja {row.name}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Esta accion cambiara el estado a inactivo y dejara lista la llamada cuando exista endpoint backend.
+                  Esta accion desactivara el alojamiento. No podras revertirlo si tiene reservas futuras activas.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                 <AlertDialogAction
-                  onClick={(e) => {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-
-                    const hasFutureBookings = hostBookings.some((booking) => {
-                      const isSameHouse = booking.house === row.name;
-                      const isActiveBooking = booking.status === "Confirmed" || booking.status === "Pending";
-                      const bookingDate = new Date(booking.checkIn);
-                      const isFuture = bookingDate >= today;
-                      
-                      return isSameHouse && isActiveBooking && isFuture;
-                    });
-
-                    if (hasFutureBookings) {
-                      e.preventDefault();
-                      toast({
-                        title: "Accion denegada",
-                        description: "No se puede dar de baja una casa con reservas futuras.",
-                        variant: "destructive",
-                      });
-                      return;
+                  onClick={async (e) => {
+                    if (row.accommodationId) {
+                      const result = await deactivateAccommodation(row.accommodationId)
+                      if (result.error) {
+                        e.preventDefault()
+                        toast({ title: "No se pudo dar de baja", description: result.error, variant: "destructive" })
+                        return
+                      }
                     }
-
                     setProperties((current) =>
-                      current.map((property) =>
-                        property.id === row.id ? { ...property, status: "Inactive", occupancy: "0%", estimatedIncome: "$0" } : property,
+                      current.map((p) =>
+                        p.id === row.id ? { ...p, status: "Inactive", occupancy: "0%", estimatedIncome: "$0" } : p,
                       ),
                     )
-                    toast({
-                      title: "Casa marcada como inactiva",
-                      description: "Cambio aplicado en UI. Se conectara al endpoint de baja cuando se publique en OpenAPI.",
-                    })
+                    toast({ title: "Alojamiento dado de baja correctamente" })
                   }}
                 >
                   Confirmar
@@ -437,50 +444,33 @@ function HostDashboard({ section }: { section?: string }) {
     },
   ]
 
-  const filteredHostBookings = useMemo(() => {
-    return hostBookings.filter((booking) => {
-      const matchesQuery = booking.code.toLowerCase().includes(query.toLowerCase()) || booking.house.toLowerCase().includes(query.toLowerCase())
-      const matchesStatus = status === "all" || booking.status.toLowerCase() === status
-      return matchesQuery && matchesStatus
-    })
-  }, [query, status])
-
   if (!section) {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Dashboard Propietario"
-          description="Administra casas, reservas, comentarios y disponibilidad por tipo de inventario."
-        />
+        <PageHeader title="Inicio" description="Resumen de la actividad de tus propiedades." />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard
-            label="Casas activas"
-            value={String(properties.filter((property) => property.status === "Active").length)}
-            hint="portafolio"
-            trend={9}
-            icon={Home}
-          />
-          <KpiCard label="Reservas por confirmar" value="2" hint="proximas 72h" trend={6} icon={Calendar} />
-          <KpiCard label="Ingresos estimados" value="$8.9M" hint="mes actual" trend={14} icon={CircleDollarSign} />
-          <KpiCard label="Comentarios recibidos" value="2" hint="ultima semana" trend={2} icon={MessageSquare} />
+          <KpiCard label="Casas activas" value="—" hint="" trend={0} icon={Home} />
+          <KpiCard label="Reservas por confirmar" value="—" hint="" trend={0} icon={Calendar} />
+          <KpiCard label="Ingresos estimados" value="—" hint="" trend={0} icon={CircleDollarSign} />
+          <KpiCard label="Comentarios recibidos" value="—" hint="" trend={0} icon={MessageSquare} />
         </div>
-
         <Card>
           <CardHeader>
-            <CardTitle>Notificaciones</CardTitle>
-            <CardDescription>Resumen de eventos de reservas, cancelaciones y comentarios.</CardDescription>
+            <CardTitle>Notificaciones recientes</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {hostNotifications.map((notification) => (
-              <div key={notification.id} className="rounded-lg border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium">{notification.title}</p>
-                  <StatusBadge value={notification.status} />
-                </div>
-                <p className="text-sm text-muted-foreground">{notification.detail}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{notification.createdAt}</p>
-              </div>
-            ))}
+          <CardContent>
+            <DataTable
+              data={notifications}
+              columns={[
+                { id: "title", header: "Evento", cell: (row) => row.title },
+                { id: "detail", header: "Detalle", cell: (row) => row.detail },
+                { id: "createdAt", header: "Fecha", cell: (row) => row.createdAt },
+                { id: "status", header: "Estado", cell: (row) => <StatusBadge value={row.status} /> },
+              ]}
+              emptyTitle="Sin notificaciones"
+              emptyDescription="Aqui apareceran los eventos de reservas y comentarios."
+              getRowKey={(row) => row.id}
+            />
           </CardContent>
         </Card>
       </div>
@@ -490,10 +480,7 @@ function HostDashboard({ section }: { section?: string }) {
   if (section === "properties") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Casas del propietario"
-          description="Gestion de casas activas/inactivas y baja de casa lista para integracion backend."
-        />
+        <PageHeader title="Mis propiedades" description="Gestion de alojamientos registrados." />
         <TableFilters
           searchValue={query}
           onSearchChange={setQuery}
@@ -509,8 +496,8 @@ function HostDashboard({ section }: { section?: string }) {
         <DataTable
           data={filteredProperties}
           columns={propertyColumns}
-          emptyTitle="Sin casas"
-          emptyDescription="Cambia filtros o agrega una nueva casa."
+          emptyTitle="Sin propiedades"
+          emptyDescription="Todavia no tienes propiedades registradas."
           getRowKey={(row) => row.id}
         />
       </div>
@@ -520,10 +507,7 @@ function HostDashboard({ section }: { section?: string }) {
   if (section === "bookings") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Reservas por casa"
-          description="Monitorea reservas activas y pendientes por propiedad."
-        />
+        <PageHeader title="Reservas" description="Reservas activas y pendientes de tus propiedades." />
         <TableFilters
           searchValue={query}
           onSearchChange={setQuery}
@@ -538,10 +522,10 @@ function HostDashboard({ section }: { section?: string }) {
           ]}
         />
         <DataTable
-          data={filteredHostBookings}
+          data={filteredBookings}
           columns={getBookingColumns()}
           emptyTitle="Sin reservas"
-          emptyDescription="No se encontraron reservas para los filtros aplicados."
+          emptyDescription="Aqui apareceran las reservas de tus propiedades."
           getRowKey={(row) => row.id}
         />
       </div>
@@ -551,11 +535,8 @@ function HostDashboard({ section }: { section?: string }) {
   if (section === "availability") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Disponibilidad"
-          description="Flujo principal de inventario con selector obligatorio: Solo Casa Entera, Solo Habitaciones o Ambas."
-        />
-        <HostInventoryManager mode="availability" />
+        <PageHeader title="Disponibilidad" description="Consulta y gestiona los periodos bloqueados de tus propiedades." />
+        <HostAvailabilityView />
       </div>
     )
   }
@@ -563,11 +544,8 @@ function HostDashboard({ section }: { section?: string }) {
   if (section === "packages") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Paquetes por fecha"
-          description="Crea paquetes por rango y valida bloqueos cruzados antes de persistir en backend."
-        />
-        <HostInventoryManager mode="packages" />
+        <PageHeader title="Paquetes" description="Crea paquetes de inventario por rango de fechas y valida reglas de bloqueo." />
+        <HostPackagesView />
       </div>
     )
   }
@@ -575,25 +553,20 @@ function HostDashboard({ section }: { section?: string }) {
   if (section === "reviews") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Comentarios recibidos"
-          description="Seguimiento de comentarios de clientes por casa."
+        <PageHeader title="Comentarios recibidos" description="Valoraciones de huespedes sobre tus propiedades." />
+        <DataTable
+          data={reviews}
+          columns={[
+            { id: "guest", header: "Huesped", cell: (row) => row.guest },
+            { id: "house", header: "Propiedad", cell: (row) => row.house },
+            { id: "rating", header: "Calificacion", cell: (row) => `${row.rating}/5` },
+            { id: "comment", header: "Comentario", cell: (row) => row.comment, className: "max-w-[320px] truncate" },
+            { id: "createdAt", header: "Fecha", cell: (row) => row.createdAt },
+          ]}
+          emptyTitle="Sin comentarios"
+          emptyDescription="Aqui apareceran los comentarios de tus huespedes."
+          getRowKey={(row) => row.id}
         />
-        <Card>
-          <CardContent className="space-y-3 pt-6">
-            {hostReviews.map((review) => (
-              <div key={review.id} className="rounded-lg border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium">{review.guest}</p>
-                  <Badge variant="outline">{review.rating}/5</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">{review.house}</p>
-                <p className="mt-2 text-sm">{review.comment}</p>
-                <p className="mt-2 text-xs text-muted-foreground">{review.createdAt}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
       </div>
     )
   }
@@ -601,12 +574,9 @@ function HostDashboard({ section }: { section?: string }) {
   if (section === "notifications") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Notificaciones"
-          description="Eventos de reservas, cancelaciones y comentarios listos para integrar endpoint real."
-        />
+        <PageHeader title="Notificaciones" description="Eventos de reservas, cancelaciones y comentarios." />
         <DataTable
-          data={hostNotifications}
+          data={notifications}
           columns={[
             { id: "title", header: "Evento", cell: (row) => row.title },
             { id: "detail", header: "Detalle", cell: (row) => row.detail },
@@ -614,7 +584,7 @@ function HostDashboard({ section }: { section?: string }) {
             { id: "status", header: "Estado", cell: (row) => <StatusBadge value={row.status} /> },
           ]}
           emptyTitle="Sin notificaciones"
-          emptyDescription="Aun no hay eventos para mostrar."
+          emptyDescription="Aqui apareceran los eventos de tus propiedades."
           getRowKey={(row) => row.id}
         />
       </div>
@@ -624,26 +594,29 @@ function HostDashboard({ section }: { section?: string }) {
   if (section === "profile") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Perfil propietario"
-          description="Configuracion de cuenta y canales de contacto para notificaciones."
-        />
-        <Card>
-          <CardHeader>
-            <CardTitle>Datos de cuenta</CardTitle>
-            <CardDescription>Modulo listo para conectar cambios al endpoint de perfil en sprint siguiente.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-lg border p-3 text-sm">
-              <p className="font-medium">Nombre comercial</p>
-              <p className="text-muted-foreground">Walter Host</p>
-            </div>
-            <div className="rounded-lg border p-3 text-sm">
-              <p className="font-medium">Email</p>
-              <p className="text-muted-foreground">host@stayhub.app</p>
-            </div>
-          </CardContent>
-        </Card>
+        <PageHeader title="Mi perfil" description="Informacion de tu cuenta y seguridad." />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Datos de cuenta</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground mb-0.5">Email</p>
+                <p className="font-medium">{session?.email ?? "—"}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground mb-0.5">Roles</p>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {session?.roles.map((role) => (
+                    <Badge key={role} variant="outline">{role}</Badge>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <ChangePasswordCard />
+        </div>
       </div>
     )
   }
@@ -651,38 +624,37 @@ function HostDashboard({ section }: { section?: string }) {
   return <UnknownSection section={section} />
 }
 
+// ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+
 function AdminDashboard({ section }: { section?: string }) {
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("all")
 
-  const filteredUsers = useMemo(() => {
-    return adminUsers.filter((user) => {
-      const matchesQuery = user.name.toLowerCase().includes(query.toLowerCase()) || user.email.toLowerCase().includes(query.toLowerCase())
-      const matchesStatus = status === "all" || user.status.toLowerCase() === status
-      return matchesQuery && matchesStatus
-    })
-  }, [query, status])
+  const users: AdminUserRow[] = []
+  const alerts: AlertRow[] = []
+  const audit: AuditRow[] = []
+
+  const filteredUsers = useMemo(
+    () => users.filter((u) => {
+      const q = query.toLowerCase()
+      return (u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)) &&
+        (status === "all" || u.status.toLowerCase() === status)
+    }),
+    [query, status],
+  )
 
   if (!section) {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Dashboard Administrador"
-          description="Vision global de usuarios, casas, reservas, alertas y trazabilidad de auditoria."
-        />
+        <PageHeader title="Panel de administracion" description="Vision global de usuarios, propiedades y reservas." />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Usuarios totales" value="1.245" hint="activos" trend={5} icon={Users} />
-          <KpiCard label="Propietarios" value="148" hint="verificados" trend={4} icon={Home} />
-          <KpiCard label="Reservas abiertas" value="312" hint="global" trend={7} icon={Calendar} />
-          <KpiCard label="Alertas criticas" value="2" hint="requieren revision" trend={-12} icon={Shield} />
+          <KpiCard label="Usuarios totales" value="—" hint="" trend={0} icon={Users} />
+          <KpiCard label="Propietarios" value="—" hint="" trend={0} icon={Home} />
+          <KpiCard label="Reservas abiertas" value="—" hint="" trend={0} icon={Calendar} />
+          <KpiCard label="Alertas criticas" value="—" hint="" trend={0} icon={Shield} />
         </div>
-
-        <Alert>
-          <AlertTitle>Control y monitoreo habilitado</AlertTitle>
-          <AlertDescription>
-            El panel admin se comporta como existente para UI/UX. Al publicarse endpoints admin en OpenAPI, se conectan tablas y acciones sin reestructurar rutas.
-          </AlertDescription>
-        </Alert>
       </div>
     )
   }
@@ -691,16 +663,13 @@ function AdminDashboard({ section }: { section?: string }) {
     const titleBySection: Record<string, string> = {
       users: "Usuarios",
       hosts: "Propietarios",
-      properties: "Casas",
+      properties: "Propiedades",
       bookings: "Reservas",
     }
 
     return (
       <div className="space-y-6">
-        <PageHeader
-          title={titleBySection[section]}
-          description="Vista global paginada y filtrable para operacion y soporte."
-        />
+        <PageHeader title={titleBySection[section]} description="Listado global filtrable." />
         <TableFilters
           searchValue={query}
           onSearchChange={setQuery}
@@ -721,7 +690,7 @@ function AdminDashboard({ section }: { section?: string }) {
             { id: "status", header: "Estado", cell: (row) => <StatusBadge value={row.status} /> },
           ]}
           emptyTitle="Sin registros"
-          emptyDescription="No hay datos para los filtros seleccionados."
+          emptyDescription="No hay datos disponibles."
           getRowKey={(row) => row.id}
         />
       </div>
@@ -731,20 +700,23 @@ function AdminDashboard({ section }: { section?: string }) {
   if (section === "alerts") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Alertas"
-          description="Monitoreo de seguridad, pagos y eventos de riesgo."
-        />
+        <PageHeader title="Alertas" description="Monitoreo de seguridad y eventos de riesgo." />
         <DataTable
-          data={adminAlerts}
+          data={alerts}
           columns={[
             { id: "title", header: "Alerta", cell: (row) => row.title },
             { id: "detail", header: "Detalle", cell: (row) => row.detail },
-            { id: "severity", header: "Severidad", cell: (row) => <Badge variant={row.severity === "High" ? "destructive" : "outline"}>{row.severity}</Badge> },
+            {
+              id: "severity",
+              header: "Severidad",
+              cell: (row) => (
+                <Badge variant={row.severity === "High" ? "destructive" : "outline"}>{row.severity}</Badge>
+              ),
+            },
             { id: "createdAt", header: "Fecha", cell: (row) => row.createdAt },
           ]}
-          emptyTitle="Sin alertas"
-          emptyDescription="No hay alertas activas en este momento."
+          emptyTitle="Sin alertas activas"
+          emptyDescription="No hay alertas registradas en este momento."
           getRowKey={(row) => row.id}
         />
       </div>
@@ -754,12 +726,9 @@ function AdminDashboard({ section }: { section?: string }) {
   if (section === "audit") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Auditoria basica"
-          description="Registro de acciones criticas y accesos para trazabilidad minima."
-        />
+        <PageHeader title="Auditoria" description="Registro de acciones criticas del sistema." />
         <DataTable
-          data={adminAudit}
+          data={audit}
           columns={[
             { id: "actor", header: "Actor", cell: (row) => row.actor },
             { id: "action", header: "Accion", cell: (row) => row.action },
@@ -767,7 +736,7 @@ function AdminDashboard({ section }: { section?: string }) {
             { id: "createdAt", header: "Fecha", cell: (row) => row.createdAt },
           ]}
           emptyTitle="Sin eventos"
-          emptyDescription="Aun no hay eventos de auditoria para este rango."
+          emptyDescription="No hay eventos de auditoria para mostrar."
           getRowKey={(row) => row.id}
         />
       </div>
@@ -781,9 +750,9 @@ function UnknownSection({ section }: { section?: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Seccion no disponible</CardTitle>
+        <CardTitle>Seccion no encontrada</CardTitle>
         <CardDescription>
-          La seccion <span className="font-medium">{section}</span> no existe en la arquitectura actual del dashboard.
+          La seccion <span className="font-medium">{section}</span> no existe.
         </CardDescription>
       </CardHeader>
     </Card>
