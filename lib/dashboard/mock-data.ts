@@ -14,6 +14,8 @@ export interface PaymentRow {
   bookingCode: string
   dueDate: string
   amount: string
+  totalAmount: string
+  accountNumber: string
   status: "Pending" | "Paid" | "Overdue"
   method: string
 }
@@ -82,8 +84,10 @@ export const guestPayments: PaymentRow[] = [
   {
     id: "p1",
     bookingCode: "STH-2031",
-    dueDate: "2026-04-05",
+    dueDate: "2026-04-15",
     amount: "$360.000",
+    totalAmount: "$1.800.000",
+    accountNumber: "001-123456-78",
     status: "Pending",
     method: "Transferencia",
   },
@@ -92,6 +96,8 @@ export const guestPayments: PaymentRow[] = [
     bookingCode: "STH-1988",
     dueDate: "2026-02-20",
     amount: "$196.000",
+    totalAmount: "$980.000",
+    accountNumber: "001-123456-78",
     status: "Paid",
     method: "Transferencia",
   },
