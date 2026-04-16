@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { AlertTriangle, Calendar, CircleDollarSign, Home, MessageSquare, Shield, Users } from "lucide-react"
+import { AlertTriangle, Calendar, CheckCircle2, Circle, CircleDollarSign, Home, MessageSquare, Shield, Users, XCircle } from "lucide-react"
 import { changePassword } from "@/lib/api/auth"
 import { deactivateAccommodation } from "@/lib/api/accommodations"
 import { roleSegmentToAppRole, type DashboardRoleSegment, isDashboardRoleSegment } from "@/lib/dashboard/roles"
@@ -110,6 +110,31 @@ function renderRoleSection(role: DashboardRoleSegment, section?: string) {
 // Change password card — shared between guest and host profile
 // ---------------------------------------------------------------------------
 
+// ChangePasswordRequestDTO: ^(?=.*\d)(?=.*\p{Ll})(?=.*\p{Lu})(?=.*[^\p{L}\d\s]).{8,}$
+// JS equivalent (Latin charset)
+const CHANGE_PASSWORD_REGEX = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[^a-zA-Z\d\s]).{8,}$/
+
+function PasswordRequirements({ password }: { password: string }) {
+  if (!password) return null
+  const checks = [
+    { label: "Mínimo 8 caracteres", ok: password.length >= 8 },
+    { label: "1 letra mayúscula", ok: /[A-Z]/.test(password) },
+    { label: "1 letra minúscula", ok: /[a-z]/.test(password) },
+    { label: "1 número", ok: /\d/.test(password) },
+    { label: "1 carácter especial", ok: /[^a-zA-Z\d\s]/.test(password) },
+  ]
+  return (
+    <ul className="mt-1.5 space-y-0.5">
+      {checks.map(({ label, ok }) => (
+        <li key={label} className={`text-xs flex items-center gap-1.5 transition-colors ${ok ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
+          {ok ? <CheckCircle2 className="size-3 shrink-0" /> : <Circle className="size-3 shrink-0" />}
+          {label}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function ChangePasswordCard() {
   const { toast } = useToast()
   const [currentPassword, setCurrentPassword] = useState("")
@@ -122,44 +147,54 @@ function ChangePasswordCard() {
       toast({ title: "Completa todos los campos", variant: "destructive" })
       return
     }
+    if (!CHANGE_PASSWORD_REGEX.test(newPassword)) {
+      toast({ title: "La contraseña no cumple los requisitos de seguridad", variant: "destructive" })
+      return
+    }
     if (newPassword !== confirmPassword) {
-      toast({ title: "Las contrasenas no coinciden", variant: "destructive" })
+      toast({ title: "Las contraseñas no coinciden", variant: "destructive" })
       return
     }
     setIsLoading(true)
     const result = await changePassword({ currentPassword, newPassword })
     setIsLoading(false)
     if (result.error) {
-      toast({ title: "No se pudo cambiar la contrasena", description: result.error, variant: "destructive" })
+      toast({ title: "No se pudo cambiar la contraseña", description: result.error, variant: "destructive" })
       return
     }
     setCurrentPassword("")
     setNewPassword("")
     setConfirmPassword("")
-    toast({ title: "Contrasena actualizada correctamente" })
+    toast({ title: "Contraseña actualizada correctamente" })
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Cambiar contrasena</CardTitle>
-        <CardDescription>Ingresa tu contrasena actual y elige una nueva.</CardDescription>
+        <CardTitle>Cambiar contraseña</CardTitle>
+        <CardDescription>Ingresa tu contraseña actual y elige una nueva.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="space-y-2">
-          <Label htmlFor="cp-current">Contrasena actual</Label>
+          <Label htmlFor="cp-current">Contraseña actual</Label>
           <Input id="cp-current" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="cp-new">Nueva contrasena</Label>
+          <Label htmlFor="cp-new">Nueva contraseña</Label>
           <Input id="cp-new" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          <PasswordRequirements password={newPassword} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="cp-confirm">Confirmar nueva contrasena</Label>
+          <Label htmlFor="cp-confirm">Confirmar nueva contraseña</Label>
           <Input id="cp-confirm" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          {confirmPassword && newPassword !== confirmPassword && (
+            <p className="text-xs text-destructive flex items-center gap-1.5 mt-1">
+              <XCircle className="size-3 shrink-0" /> Las contraseñas no coinciden
+            </p>
+          )}
         </div>
         <Button onClick={handleSubmit} disabled={isLoading} className="w-full">
-          {isLoading ? "Guardando..." : "Guardar nueva contrasena"}
+          {isLoading ? "Guardando..." : "Guardar nueva contraseña"}
         </Button>
       </CardContent>
     </Card>

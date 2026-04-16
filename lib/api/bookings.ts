@@ -4,24 +4,20 @@ import { apiClient } from "@/lib/api/client"
 
 export interface BookingRequest {
   accommodationId: number
-  checkInDate: string   // ISO date "YYYY-MM-DD"
-  checkOutDate: string  // ISO date "YYYY-MM-DD"
-  numberOfGuests: number
-  specialRequests?: string
+  startDate: string  // ISO datetime "YYYY-MM-DDTHH:mm:ss"
+  endDate: string    // ISO datetime "YYYY-MM-DDTHH:mm:ss"
 }
 
 export interface BookingResponse {
   id: number
-  code: string
+  startDate: string
+  endDate: string
+  totalPrice: number
+  currency: string
+  status: "ACTIVE" | "CANCELLED" | "COMPLETED"
   accommodationId: number
-  checkInDate: string
-  checkOutDate: string
-  numberOfGuests: number
-  numberOfNights: number
-  pricePerNight: number
-  totalAmount: number
-  status: "PENDING" | "CONFIRMED"
-  createdAt: string
+  accommodationTitle: string
+  userId: number
 }
 
 // --- API Functions ---

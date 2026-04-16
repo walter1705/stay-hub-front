@@ -1,24 +1,28 @@
 "use client"
 
 import { useState } from "react"
-import { Search, Users, CalendarDays, CheckCircle2 } from "lucide-react"
+import {
+  ArrowLeft,
+  CalendarDays,
+  CheckCircle2,
+  Home,
+  MapPin,
+  Search,
+  Users,
+  XCircle,
+} from "lucide-react"
 import { getAccommodationById, type AccommodationDetailResponse } from "@/lib/api/accommodations"
 import { createBooking } from "@/lib/api/bookings"
 import { useToast } from "@/hooks/use-toast"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 import { Spinner } from "@/components/ui/spinner"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+
+type View = "search" | "detail"
 
 function formatCOP(value: number) {
   return value.toLocaleString("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 })
@@ -30,334 +34,431 @@ function calculateNights(checkIn: string, checkOut: string): number {
   return Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)))
 }
 
-export function GuestAccommodationSearch() {
-  const { toast } = useToast()
+function toDateTime(date: string, time: string): string {
+  return `${date}T${time}:00`
+}
 
-  // Search state
-  const [accommodationId, setAccommodationId] = useState("")
-  const [checkIn, setCheckIn] = useState("")
-  const [checkOut, setCheckOut] = useState("")
-  const [guests, setGuests] = useState(1)
+// ---------------------------------------------------------------------------
+// Search view — just the code input + brief result card
+// ---------------------------------------------------------------------------
+
+interface SearchViewProps {
+  onViewDetail: (accommodation: AccommodationDetailResponse, id: number) => void
+}
+
+function SearchView({ onViewDetail }: SearchViewProps) {
+  const { toast } = useToast()
+  const [code, setCode] = useState("")
   const [isSearching, setIsSearching] = useState(false)
   const [result, setResult] = useState<AccommodationDetailResponse | null>(null)
-
-  // Booking dialog state
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [specialRequests, setSpecialRequests] = useState("")
-  const [isBooking, setIsBooking] = useState(false)
-  const [confirmedBooking, setConfirmedBooking] = useState<{ code: string; total: number } | null>(null)
-
-  const nights = calculateNights(checkIn, checkOut)
-  const total = result ? nights * result.pricePerNight : 0
-  const today = new Date().toISOString().split("T")[0]
+  const [resultId, setResultId] = useState<number | null>(null)
+  const [notFound, setNotFound] = useState(false)
 
   const handleSearch = async () => {
-    const idValue = Number(accommodationId)
-    if (!Number.isInteger(idValue) || idValue <= 0) {
+    const id = Number(code.trim())
+    if (!Number.isInteger(id) || id <= 0) {
       toast({ title: "Codigo invalido", description: "Ingresa el codigo numerico del alojamiento.", variant: "destructive" })
-      return
-    }
-    if (checkIn && checkOut && checkIn >= checkOut) {
-      toast({ title: "Fechas invalidas", description: "El check-out debe ser posterior al check-in.", variant: "destructive" })
       return
     }
 
     setIsSearching(true)
     setResult(null)
-    setConfirmedBooking(null)
-    const response = await getAccommodationById(idValue)
+    setNotFound(false)
+
+    const response = await getAccommodationById(id)
     setIsSearching(false)
 
-    if (response.error) {
-      toast({ title: "No se encontro el alojamiento", description: response.error, variant: "destructive" })
+    if (response.error || !response.data) {
+      setNotFound(true)
       return
     }
 
-    setResult(response.data ?? null)
+    setResult(response.data)
+    setResultId(id)
   }
 
+  return (
+    <div className="space-y-6">
+      {/* Search input */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Buscar alojamiento</CardTitle>
+          <CardDescription>Ingresa el codigo del alojamiento para ver su informacion.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-3 max-w-sm">
+            <Input
+              placeholder="Ej. 1"
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value)
+                setResult(null)
+                setNotFound(false)
+              }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleSearch() }}
+            />
+            <Button onClick={handleSearch} disabled={isSearching}>
+              {isSearching ? <Spinner className="size-4" /> : <Search className="size-4" />}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Not found feedback */}
+      {notFound && (
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="flex items-center gap-4 pt-6">
+            <XCircle className="size-7 shrink-0 text-destructive" />
+            <div>
+              <p className="font-semibold text-destructive">Alojamiento no encontrado</p>
+              <p className="text-sm text-muted-foreground">
+                No existe un alojamiento con el codigo <span className="font-mono font-medium">{code}</span>. Verifica e intenta de nuevo.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Brief result card */}
+      {result && resultId !== null && (
+        <Card className="border-primary/20">
+          <CardContent className="pt-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-semibold text-base truncate">{result.title}</h3>
+                  <Badge variant={result.available ? "default" : "secondary"} className="shrink-0">
+                    {result.available ? "Disponible" : "No disponible"}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground flex items-center gap-1">
+                  <MapPin className="size-3 shrink-0" />
+                  {result.city}
+                </p>
+                <div className="flex flex-wrap gap-3 mt-2 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <Users className="size-3.5" />
+                    Hasta {result.capacity} personas
+                  </span>
+                  <span className="font-medium text-foreground">
+                    {formatCOP(result.pricePerNight)} / noche
+                  </span>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="shrink-0"
+                onClick={() => onViewDetail(result, resultId)}
+              >
+                Ver alojamiento
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Detail view — full page with booking flow
+// ---------------------------------------------------------------------------
+
+interface DetailViewProps {
+  accommodation: AccommodationDetailResponse
+  accommodationId: number
+  onBack: () => void
+}
+
+function DetailView({ accommodation, accommodationId, onBack }: DetailViewProps) {
+  const { toast } = useToast()
+  const today = new Date().toISOString().split("T")[0]
+
+  const [bookingOpen, setBookingOpen] = useState(false)
+  const [checkIn, setCheckIn] = useState("")
+  const [checkOut, setCheckOut] = useState("")
+  const [isBooking, setIsBooking] = useState(false)
+  const [confirmedBooking, setConfirmedBooking] = useState<{ id: number; total: number; currency: string } | null>(null)
+
+  const nights = calculateNights(checkIn, checkOut)
+  const total = nights * accommodation.pricePerNight
+
   const handleBook = async () => {
-    if (!result || !checkIn || !checkOut || nights <= 0) {
-      toast({ title: "Completa las fechas", description: "Selecciona fechas de check-in y check-out.", variant: "destructive" })
-      return
-    }
-    if (guests < 1 || guests > result.capacity) {
-      toast({
-        title: "Cantidad de huespedes invalida",
-        description: `Este alojamiento acepta entre 1 y ${result.capacity} personas.`,
-        variant: "destructive",
-      })
+    if (!checkIn || !checkOut || nights <= 0) {
+      toast({ title: "Fechas requeridas", description: "Selecciona check-in y check-out.", variant: "destructive" })
       return
     }
 
     setIsBooking(true)
     const response = await createBooking({
-      accommodationId: Number(accommodationId),
-      checkInDate: checkIn,
-      checkOutDate: checkOut,
-      numberOfGuests: guests,
-      specialRequests: specialRequests || undefined,
+      accommodationId,
+      startDate: toDateTime(checkIn, "14:00"),
+      endDate: toDateTime(checkOut, "11:00"),
     })
     setIsBooking(false)
 
-    if (response.error) {
+    if (response.error || !response.data) {
       toast({ title: "No se pudo realizar la reserva", description: response.error, variant: "destructive" })
       return
     }
 
     setConfirmedBooking({
-      code: response.data?.code ?? "—",
-      total: response.data?.totalAmount ?? total,
+      id: response.data.id,
+      total: response.data.totalPrice,
+      currency: response.data.currency,
     })
-    setDialogOpen(false)
-    setSpecialRequests("")
-    toast({ title: "Reserva confirmada", description: `Codigo: ${response.data?.code}` })
+    setBookingOpen(false)
+    setCheckIn("")
+    setCheckOut("")
   }
 
   return (
     <div className="space-y-6">
-      {/* Search form */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Buscar alojamiento</CardTitle>
-          <CardDescription>Ingresa el codigo del alojamiento y selecciona tus fechas para ver disponibilidad y precio.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2">
-              <Label htmlFor="acc-id">Codigo de alojamiento</Label>
-              <Input
-                id="acc-id"
-                placeholder="Ej. 1"
-                value={accommodationId}
-                onChange={(e) => setAccommodationId(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleSearch() }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="check-in">
-                <span className="flex items-center gap-1.5">
-                  <CalendarDays className="size-3.5" />
-                  Check-in
-                </span>
-              </Label>
-              <Input
-                id="check-in"
-                type="date"
-                min={today}
-                value={checkIn}
-                onChange={(e) => {
-                  setCheckIn(e.target.value)
-                  if (checkOut && e.target.value >= checkOut) setCheckOut("")
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="check-out">
-                <span className="flex items-center gap-1.5">
-                  <CalendarDays className="size-3.5" />
-                  Check-out
-                </span>
-              </Label>
-              <Input
-                id="check-out"
-                type="date"
-                min={checkIn || today}
-                value={checkOut}
-                onChange={(e) => setCheckOut(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="guests">
-                <span className="flex items-center gap-1.5">
-                  <Users className="size-3.5" />
-                  Huespedes
-                </span>
-              </Label>
-              <Input
-                id="guests"
-                type="number"
-                min={1}
-                max={20}
-                value={guests}
-                onChange={(e) => setGuests(Math.max(1, parseInt(e.target.value) || 1))}
-              />
-            </div>
-          </div>
-          <Button onClick={handleSearch} disabled={isSearching} className="mt-4">
-            {isSearching ? (
-              <><Spinner className="mr-2 size-4" />Buscando...</>
-            ) : (
-              <><Search className="mr-2 size-4" />Buscar</>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Back button */}
+      <Button variant="ghost" size="sm" className="-ml-2 gap-2" onClick={onBack}>
+        <ArrowLeft className="size-4" />
+        Volver a la busqueda
+      </Button>
 
-      {/* Booking confirmed */}
+      {/* Confirmed booking banner */}
       {confirmedBooking && (
         <Card className="border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/20">
           <CardContent className="flex items-center gap-4 pt-6">
             <CheckCircle2 className="size-8 shrink-0 text-green-600" />
             <div>
               <p className="font-semibold text-green-800 dark:text-green-400">
-                Reserva confirmada — {confirmedBooking.code}
+                Reserva #{confirmedBooking.id} confirmada
               </p>
               <p className="text-sm text-green-700 dark:text-green-500">
-                Total: {formatCOP(confirmedBooking.total)}. Revisa tus reservas para ver el estado completo.
+                Total: {confirmedBooking.total.toLocaleString("es-CO", {
+                  style: "currency",
+                  currency: confirmedBooking.currency,
+                  maximumFractionDigits: 0,
+                })}. Revisa la seccion de reservas para ver el estado.
               </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Result card */}
-      {result && !confirmedBooking && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <CardTitle>{result.title}</CardTitle>
-                <CardDescription>{result.city} — {result.locationDescription}</CardDescription>
-              </div>
-              <Badge variant={result.available ? "default" : "secondary"} className="shrink-0 mt-0.5">
-                {result.available ? "Disponible" : "No disponible"}
-              </Badge>
+      {/* Hero */}
+      <div className="relative rounded-2xl overflow-hidden h-52 md:h-72 bg-gradient-to-br from-primary/20 via-primary/10 to-muted flex items-end">
+        {accommodation.mainImage ? (
+          <img
+            src={accommodation.mainImage}
+            alt={accommodation.title}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center opacity-20">
+            <Home className="size-24" />
+          </div>
+        )}
+        <div className="relative z-10 w-full p-5 bg-gradient-to-t from-black/70 to-transparent">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-white leading-tight">{accommodation.title}</h1>
+              <p className="text-white/80 text-sm flex items-center gap-1 mt-0.5">
+                <MapPin className="size-3.5 shrink-0" />
+                {accommodation.city} — {accommodation.locationDescription}
+              </p>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="flex flex-wrap gap-2 text-sm">
-              <Badge variant="outline">
-                <Users className="mr-1.5 size-3" />
-                Hasta {result.capacity} personas
-              </Badge>
-              <Badge variant="outline">
-                {formatCOP(result.pricePerNight)} / noche
-              </Badge>
-            </div>
-
-            <p className="text-sm text-muted-foreground">{result.description}</p>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-lg border p-3 text-sm">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Propietario</p>
-                <p className="font-medium">{result.host.fullName}</p>
-                <p className="text-muted-foreground">{result.host.email}</p>
-              </div>
-              {result.images.length > 0 && (
-                <div className="rounded-lg border p-3 text-sm">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Fotos</p>
-                  <p>{result.images.length} {result.images.length === 1 ? "imagen" : "imagenes"}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Price summary when dates selected */}
-            {checkIn && checkOut && nights > 0 && (
-              <div className="rounded-xl border bg-muted/30 p-4">
-                <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">
-                    {formatCOP(result.pricePerNight)} × {nights} {nights === 1 ? "noche" : "noches"}
-                  </span>
-                  <span className="font-semibold text-base">{formatCOP(total)}</span>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {new Date(checkIn + "T12:00:00").toLocaleDateString("es-CO", { day: "numeric", month: "short" })}
-                  {" — "}
-                  {new Date(checkOut + "T12:00:00").toLocaleDateString("es-CO", { day: "numeric", month: "short" })}
-                  {" · "}
-                  {guests} {guests === 1 ? "huesped" : "huespedes"}
-                </div>
-              </div>
-            )}
-
-            <Button
-              className="w-full sm:w-auto"
-              disabled={!result.available}
-              onClick={() => {
-                if (!checkIn || !checkOut || nights <= 0) {
-                  toast({
-                    title: "Selecciona las fechas",
-                    description: "Elige check-in y check-out antes de reservar.",
-                    variant: "destructive",
-                  })
-                  return
-                }
-                setDialogOpen(true)
-              }}
+            <Badge
+              variant={accommodation.available ? "default" : "secondary"}
+              className="shrink-0 mb-0.5"
             >
-              {result.available ? "Reservar ahora" : "No disponible"}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+              {accommodation.available ? "Disponible" : "No disponible"}
+            </Badge>
+          </div>
+        </div>
+      </div>
 
-      {/* Booking confirmation dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Confirmar reserva</DialogTitle>
-            <DialogDescription>
-              Revisa los detalles antes de confirmar tu reserva.
-            </DialogDescription>
-          </DialogHeader>
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Left column — details */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* Key stats */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="rounded-xl border p-4 text-center">
+              <p className="text-2xl font-bold">{formatCOP(accommodation.pricePerNight)}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">por noche</p>
+            </div>
+            <div className="rounded-xl border p-4 text-center">
+              <p className="text-2xl font-bold flex items-center justify-center gap-1">
+                <Users className="size-5" />
+                {accommodation.capacity}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {accommodation.capacity === 1 ? "persona" : "personas max."}
+              </p>
+            </div>
+            <div className="rounded-xl border p-4 text-center col-span-2 md:col-span-1">
+              <p className="text-2xl font-bold flex items-center justify-center gap-1">
+                <MapPin className="size-5" />
+                {accommodation.city}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">ubicacion</p>
+            </div>
+          </div>
 
-          {result && (
-            <div className="space-y-4">
-              <div className="rounded-xl border p-4 text-sm space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Alojamiento</span>
-                  <span className="font-medium">{result.title}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Check-in</span>
-                  <span>{new Date(checkIn + "T12:00:00").toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" })}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Check-out</span>
-                  <span>{new Date(checkOut + "T12:00:00").toLocaleDateString("es-CO", { day: "numeric", month: "long", year: "numeric" })}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Huespedes</span>
-                  <span>{guests}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Noches</span>
-                  <span>{nights}</span>
-                </div>
-                <div className="border-t pt-2 flex justify-between font-semibold">
-                  <span>Total</span>
-                  <span>{formatCOP(total)}</span>
-                </div>
-              </div>
+          {/* Description */}
+          <div className="space-y-2">
+            <h2 className="font-semibold">Descripcion</h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">{accommodation.description}</p>
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="special-requests">Solicitudes especiales (opcional)</Label>
-                <Textarea
-                  id="special-requests"
-                  placeholder="Llegada tarde, cuna para bebe, alergias..."
-                  rows={3}
-                  value={specialRequests}
-                  onChange={(e) => setSpecialRequests(e.target.value)}
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" onClick={() => setDialogOpen(false)}>
-                  Cancelar
-                </Button>
-                <Button className="flex-1" onClick={handleBook} disabled={isBooking}>
-                  {isBooking ? (
-                    <><Spinner className="mr-2 size-4" />Reservando...</>
-                  ) : (
-                    "Confirmar reserva"
-                  )}
-                </Button>
+          {/* Gallery */}
+          {accommodation.images.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="font-semibold">Fotos del alojamiento</h2>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {accommodation.images.map((src, i) => (
+                  <div key={i} className="rounded-lg overflow-hidden bg-muted aspect-video">
+                    <img src={src} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" />
+                  </div>
+                ))}
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+
+          {/* Host */}
+          <div className="space-y-2">
+            <h2 className="font-semibold">Propietario</h2>
+            <div className="rounded-xl border p-4 flex items-center gap-4">
+              <div className="size-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <span className="text-primary font-semibold text-sm">
+                  {accommodation.host.fullName?.charAt(0).toUpperCase() ?? "?"}
+                </span>
+              </div>
+              <div>
+                <p className="font-medium text-sm">{accommodation.host.fullName}</p>
+                <p className="text-xs text-muted-foreground">{accommodation.host.email}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right column — booking panel */}
+        <div className="space-y-4">
+          <Card className="sticky top-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                {confirmedBooking ? "Reserva confirmada" : "Realizar reserva"}
+              </CardTitle>
+              {!confirmedBooking && (
+                <CardDescription>Selecciona tus fechas para calcular el precio total.</CardDescription>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {confirmedBooking ? (
+                <div className="rounded-lg border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/20 p-3 text-sm text-center space-y-1">
+                  <CheckCircle2 className="size-6 mx-auto text-green-600" />
+                  <p className="font-medium text-green-800 dark:text-green-400">Reserva #{confirmedBooking.id}</p>
+                  <p className="text-green-700 dark:text-green-500 text-xs">
+                    Tu reserva fue confirmada exitosamente.
+                  </p>
+                </div>
+              ) : !bookingOpen ? (
+                <Button
+                  className="w-full"
+                  disabled={!accommodation.available}
+                  onClick={() => setBookingOpen(true)}
+                >
+                  {accommodation.available ? "Reservar ahora" : "No disponible"}
+                </Button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="detail-checkin" className="flex items-center gap-1.5 text-xs">
+                      <CalendarDays className="size-3.5" /> Check-in
+                    </Label>
+                    <Input
+                      id="detail-checkin"
+                      type="date"
+                      min={today}
+                      value={checkIn}
+                      onChange={(e) => {
+                        setCheckIn(e.target.value)
+                        if (checkOut && e.target.value >= checkOut) setCheckOut("")
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="detail-checkout" className="flex items-center gap-1.5 text-xs">
+                      <CalendarDays className="size-3.5" /> Check-out
+                    </Label>
+                    <Input
+                      id="detail-checkout"
+                      type="date"
+                      min={checkIn || today}
+                      value={checkOut}
+                      onChange={(e) => setCheckOut(e.target.value)}
+                    />
+                  </div>
+
+                  {nights > 0 && (
+                    <>
+                      <Separator />
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>{formatCOP(accommodation.pricePerNight)} × {nights} {nights === 1 ? "noche" : "noches"}</span>
+                          <span>{formatCOP(total)}</span>
+                        </div>
+                        <div className="flex justify-between font-semibold pt-1 border-t">
+                          <span>Total</span>
+                          <span>{formatCOP(total)}</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <Button variant="outline" size="sm" className="flex-1" onClick={() => setBookingOpen(false)}>
+                      Cancelar
+                    </Button>
+                    <Button size="sm" className="flex-1" onClick={handleBook} disabled={isBooking}>
+                      {isBooking ? <Spinner className="size-4" /> : "Confirmar"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
+}
+
+// ---------------------------------------------------------------------------
+// Root component
+// ---------------------------------------------------------------------------
+
+export function GuestAccommodationSearch() {
+  const [view, setView] = useState<View>("search")
+  const [selectedAccommodation, setSelectedAccommodation] = useState<AccommodationDetailResponse | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+
+  const handleViewDetail = (accommodation: AccommodationDetailResponse, id: number) => {
+    setSelectedAccommodation(accommodation)
+    setSelectedId(id)
+    setView("detail")
+  }
+
+  const handleBack = () => {
+    setView("search")
+    setSelectedAccommodation(null)
+    setSelectedId(null)
+  }
+
+  if (view === "detail" && selectedAccommodation && selectedId !== null) {
+    return (
+      <DetailView
+        accommodation={selectedAccommodation}
+        accommodationId={selectedId}
+        onBack={handleBack}
+      />
+    )
+  }
+
+  return <SearchView onViewDetail={handleViewDetail} />
 }
