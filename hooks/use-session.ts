@@ -9,10 +9,6 @@ export function useSession() {
   const [session, setSession] = useState<AuthSession | null>(null)
   const [status, setStatus] = useState<SessionStatus>("loading")
 
-  useEffect(() => {
-    refresh();
-  }, []);
-
   const refresh = useCallback(() => {
     const currentSession = getCurrentSession()
     if (!currentSession) {
@@ -20,10 +16,14 @@ export function useSession() {
       setStatus("unauthenticated")
       return
     }
-
     setSession(currentSession)
     setStatus("authenticated")
   }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initializing session from localStorage on mount
+    refresh()
+  }, [refresh])
 
   const logout = useCallback(() => {
     clearToken()
@@ -37,17 +37,11 @@ export function useSession() {
         refresh()
       }
     }
-
     window.addEventListener("storage", handleStorage)
     return () => {
       window.removeEventListener("storage", handleStorage)
     }
   }, [refresh])
 
-  return {
-    status,
-    session,
-    refresh,
-    logout,
-  }
+  return { status, session, refresh, logout }
 }

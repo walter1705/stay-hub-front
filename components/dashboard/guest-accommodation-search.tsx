@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import NextImage from "next/image"
 import {
   ArrowLeft,
   CalendarDays,
@@ -244,10 +245,12 @@ function DetailView({ accommodation, accommodationId, onBack }: DetailViewProps)
       {/* Hero */}
       <div className="relative rounded-2xl overflow-hidden h-52 md:h-72 bg-gradient-to-br from-primary/20 via-primary/10 to-muted flex items-end">
         {accommodation.mainImage ? (
-          <img
+          <NextImage
             src={accommodation.mainImage}
             alt={accommodation.title}
-            className="absolute inset-0 w-full h-full object-cover"
+            fill
+            className="object-cover"
+            unoptimized
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center opacity-20">
@@ -312,8 +315,8 @@ function DetailView({ accommodation, accommodationId, onBack }: DetailViewProps)
               <h2 className="font-semibold">Fotos del alojamiento</h2>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                 {accommodation.images.map((src, i) => (
-                  <div key={i} className="rounded-lg overflow-hidden bg-muted aspect-video">
-                    <img src={src} alt={`Foto ${i + 1}`} className="w-full h-full object-cover" />
+                  <div key={i} className="relative rounded-lg overflow-hidden bg-muted aspect-video">
+                    <NextImage src={src} alt={`Foto ${i + 1}`} fill className="object-cover" unoptimized />
                   </div>
                 ))}
               </div>

@@ -83,6 +83,14 @@ function getReviewColumns(): DataTableColumn<ReviewRow>[] {
   ]
 }
 
+// Stable empty arrays — defined at module level so useMemo deps don't change on every render
+const EMPTY_BOOKINGS: BookingRow[] = []
+const EMPTY_PAYMENTS: PaymentRow[] = []
+const EMPTY_REVIEWS: ReviewRow[] = []
+const EMPTY_NOTIFICATIONS: NotificationRow[] = []
+const EMPTY_HOST_REVIEWS: HostReviewRow[] = []
+const EMPTY_USERS: AdminUserRow[] = []
+
 export function RoleDashboardScreen({ roleSegment, section }: RoleDashboardScreenProps) {
   if (!isDashboardRoleSegment(roleSegment)) {
     return (
@@ -207,14 +215,13 @@ function ChangePasswordCard() {
 
 function GuestDashboard({ section }: { section?: string }) {
   const { session } = useSession()
-  const { toast } = useToast()
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("all")
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null)
 
-  const bookings: BookingRow[] = []
-  const payments: PaymentRow[] = []
-  const reviews: ReviewRow[] = []
+  const bookings = EMPTY_BOOKINGS
+  const payments = EMPTY_PAYMENTS
+  const reviews = EMPTY_REVIEWS
 
   const filteredBookings = useMemo(
     () => bookings.filter((b) => {
@@ -222,7 +229,7 @@ function GuestDashboard({ section }: { section?: string }) {
       return (b.code.toLowerCase().includes(q) || b.house.toLowerCase().includes(q)) &&
         (status === "all" || b.status.toLowerCase() === status)
     }),
-    [query, status],
+    [bookings, query, status],
   )
 
   const filteredPayments = useMemo(
@@ -230,7 +237,7 @@ function GuestDashboard({ section }: { section?: string }) {
       return p.bookingCode.toLowerCase().includes(query.toLowerCase()) &&
         (status === "all" || p.status.toLowerCase() === status)
     }),
-    [query, status, payments],
+    [payments, query, status],
   )
 
   const filteredReviews = useMemo(
@@ -239,7 +246,7 @@ function GuestDashboard({ section }: { section?: string }) {
       return (r.house.toLowerCase().includes(q) || r.comment.toLowerCase().includes(q)) &&
         (status === "all" || r.status.toLowerCase() === status)
     }),
-    [query, status],
+    [reviews, query, status],
   )
 
   if (!section) {
@@ -478,9 +485,9 @@ function HostDashboard({ section }: { section?: string }) {
   const [status, setStatus] = useState("all")
   const [properties, setProperties] = useState<PropertyRow[]>([])
 
-  const bookings: BookingRow[] = []
-  const notifications: NotificationRow[] = []
-  const reviews: HostReviewRow[] = []
+  const bookings = EMPTY_BOOKINGS
+  const notifications = EMPTY_NOTIFICATIONS
+  const reviews = EMPTY_HOST_REVIEWS
 
   const filteredProperties = useMemo(
     () => properties.filter((p) => {
@@ -497,7 +504,7 @@ function HostDashboard({ section }: { section?: string }) {
       return (b.code.toLowerCase().includes(q) || b.house.toLowerCase().includes(q)) &&
         (status === "all" || b.status.toLowerCase() === status)
     }),
-    [query, status],
+    [bookings, query, status],
   )
 
   const propertyColumns: DataTableColumn<PropertyRow>[] = [
@@ -742,7 +749,7 @@ function AdminDashboard({ section }: { section?: string }) {
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("all")
 
-  const users: AdminUserRow[] = []
+  const users = EMPTY_USERS
   const alerts: AlertRow[] = []
   const audit: AuditRow[] = []
 
@@ -752,7 +759,7 @@ function AdminDashboard({ section }: { section?: string }) {
       return (u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)) &&
         (status === "all" || u.status.toLowerCase() === status)
     }),
-    [query, status],
+    [users, query, status],
   )
 
   if (!section) {

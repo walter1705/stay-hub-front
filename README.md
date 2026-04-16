@@ -85,16 +85,39 @@ La aplicación se recarga automáticamente al guardar cambios en cualquier archi
 
 ### 6. Scripts disponibles
 
-| Comando         | Descripción                                   |
-| --------------- | --------------------------------------------- |
-| `bun dev`       | Inicia el servidor de desarrollo              |
-| `bun run build` | Genera el build de producción                 |
-| `bun start`     | Inicia el servidor con el build de producción |
-| `bun run lint`  | Ejecuta el linter (ESLint)                    |
+| Comando          | Descripción                                      |
+| ---------------- | ------------------------------------------------ |
+| `bun dev`        | Inicia el servidor de desarrollo                 |
+| `bun run build`  | Genera el build de producción                    |
+| `bun start`      | Inicia el servidor con el build de producción    |
+| `bun run lint`   | Ejecuta el linter (ESLint)                       |
+| `bun test`       | Ejecuta los tests unitarios una vez              |
+| `bun test:watch` | Ejecuta los tests en modo watch (re-corre al guardar) |
 
 ---
 
-### 7. Estructura del proyecto
+### 7. Tests unitarios
+
+El proyecto usa [Vitest](https://vitest.dev) con [Testing Library](https://testing-library.com).
+
+```bash
+# Correr todos los tests una vez
+bun test
+
+# Modo watch — re-corre al guardar un archivo
+bun test:watch
+```
+
+Los tests se encuentran en `__tests__/` y cubren:
+
+- **`lib/auth/session`** — decodificación JWT, extracción de roles, helpers de localStorage
+- **`lib/dashboard/roles`** — routing por rol, prioridades, validación de segmentos
+- **`lib/auth/password`** — validación de las tres regex de contraseña del backend (signup, change, reset)
+- **`lib/api/client`** — inyección del token, limpieza en 401, manejo de errores de red
+
+---
+
+### 8. Estructura del proyecto
 
 ```
 stay-front/

@@ -88,35 +88,22 @@ function PasswordHint({ password, pattern }: { password: string; pattern: Passwo
 // ---------------------------------------------------------------------------
 
 function useCountdown(expiresAt: number | null) {
-  const [timeLeft, setTimeLeft] = useState<string | null>(null)
-  const [expired, setExpired] = useState(false)
+  // Tick counter forces re-render every second — timeLeft/expired are derived, never set directly in effect.
+  const [, setTick] = useState(0)
 
   useEffect(() => {
-    if (!expiresAt) {
-      setTimeLeft(null)
-      setExpired(false)
-      return
-    }
-
-    const tick = () => {
-      const remaining = expiresAt - Date.now()
-      if (remaining <= 0) {
-        setTimeLeft("00:00")
-        setExpired(true)
-        return
-      }
-      const mins = Math.floor(remaining / 60000)
-      const secs = Math.floor((remaining % 60000) / 1000)
-      setTimeLeft(`${mins}:${secs.toString().padStart(2, "0")}`)
-      setExpired(false)
-    }
-
-    tick()
-    const interval = setInterval(tick, 1000)
+    if (!expiresAt) return
+    const interval = setInterval(() => setTick((t) => t + 1), 1000)
     return () => clearInterval(interval)
   }, [expiresAt])
 
-  return { timeLeft, expired }
+  if (!expiresAt) return { timeLeft: null, expired: false }
+  // eslint-disable-next-line react-hooks/purity -- Date.now() is intentionally impure in a countdown hook
+  const remaining = expiresAt - Date.now()
+  if (remaining <= 0) return { timeLeft: "00:00", expired: true }
+  const mins = Math.floor(remaining / 60000)
+  const secs = Math.floor((remaining % 60000) / 1000)
+  return { timeLeft: `${mins}:${secs.toString().padStart(2, "0")}`, expired: false }
 }
 
 // ---------------------------------------------------------------------------
