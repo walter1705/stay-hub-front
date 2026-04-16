@@ -1,9 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AlertTriangle, Calendar, CheckCircle2, Circle, CircleDollarSign, Home, MessageSquare, Shield, Users, XCircle } from "lucide-react"
 import { changePassword } from "@/lib/api/auth"
 import { deactivateAccommodation } from "@/lib/api/accommodations"
+import { getMyReservations, type ReservationSummary } from "@/lib/api/bookings"
 import { roleSegmentToAppRole, type DashboardRoleSegment, isDashboardRoleSegment } from "@/lib/dashboard/roles"
 import {
   type BookingRow,
@@ -69,6 +70,32 @@ function getPaymentColumns(): DataTableColumn<PaymentRow>[] {
     { id: "dueDate", header: "Vencimiento", cell: (row) => row.dueDate },
     { id: "amount", header: "Monto (20%)", cell: (row) => row.amount },
     { id: "method", header: "Metodo", cell: (row) => row.method },
+    { id: "status", header: "Estado", cell: (row) => <StatusBadge value={row.status} /> },
+  ]
+}
+
+function getHostBookingColumns(): DataTableColumn<ReservationSummary>[] {
+  return [
+    { id: "id", header: "Reserva #", cell: (row) => `#${row.id}` },
+    { id: "house", header: "Propiedad", cell: (row) => row.accommodationTitle },
+    {
+      id: "checkIn",
+      header: "Check-in",
+      cell: (row) =>
+        new Date(row.startDate).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }),
+    },
+    {
+      id: "checkOut",
+      header: "Check-out",
+      cell: (row) =>
+        new Date(row.endDate).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }),
+    },
+    {
+      id: "amount",
+      header: "Total",
+      cell: (row) =>
+        `${row.currency} ${row.totalPrice.toLocaleString("es-CO", { minimumFractionDigits: 2 })}`,
+    },
     { id: "status", header: "Estado", cell: (row) => <StatusBadge value={row.status} /> },
   ]
 }
@@ -485,9 +512,26 @@ function HostDashboard({ section }: { section?: string }) {
   const [status, setStatus] = useState("all")
   const [properties, setProperties] = useState<PropertyRow[]>([])
 
-  const bookings = EMPTY_BOOKINGS
   const notifications = EMPTY_NOTIFICATIONS
   const reviews = EMPTY_HOST_REVIEWS
+
+  // --- Bookings (real API) ---
+  const [hostBookings, setHostBookings] = useState<ReservationSummary[]>([])
+  const [bookingsPage, setBookingsPage] = useState(0)
+  const [bookingsTotalPages, setBookingsTotalPages] = useState(0)
+  const [bookingsLoading, setBookingsLoading] = useState(false)
+
+  useEffect(() => {
+    if (section !== "bookings") return
+    setBookingsLoading(true)
+    getMyReservations(bookingsPage).then((result) => {
+      if (result.data) {
+        setHostBookings(result.data.content)
+        setBookingsTotalPages(result.data.totalPages)
+      }
+      setBookingsLoading(false)
+    })
+  }, [section, bookingsPage])
 
   const filteredProperties = useMemo(
     () => properties.filter((p) => {
@@ -498,13 +542,13 @@ function HostDashboard({ section }: { section?: string }) {
     [properties, query, status],
   )
 
-  const filteredBookings = useMemo(
-    () => bookings.filter((b) => {
+  const filteredHostBookings = useMemo(
+    () => hostBookings.filter((b) => {
       const q = query.toLowerCase()
-      return (b.code.toLowerCase().includes(q) || b.house.toLowerCase().includes(q)) &&
+      return b.accommodationTitle.toLowerCase().includes(q) &&
         (status === "all" || b.status.toLowerCase() === status)
     }),
-    [bookings, query, status],
+    [hostBookings, query, status],
   )
 
   const propertyColumns: DataTableColumn<PropertyRow>[] = [
@@ -628,23 +672,48 @@ function HostDashboard({ section }: { section?: string }) {
         <TableFilters
           searchValue={query}
           onSearchChange={setQuery}
-          searchPlaceholder="Buscar por codigo o casa"
+          searchPlaceholder="Buscar por propiedad"
           statusValue={status}
           onStatusChange={setStatus}
           statuses={[
             { value: "all", label: "Todos" },
-            { value: "confirmed", label: "Confirmada" },
-            { value: "pending", label: "Pendiente" },
+            { value: "active", label: "Activa" },
+            { value: "completed", label: "Completada" },
             { value: "cancelled", label: "Cancelada" },
           ]}
         />
         <DataTable
-          data={filteredBookings}
-          columns={getBookingColumns()}
-          emptyTitle="Sin reservas"
-          emptyDescription="Aqui apareceran las reservas de tus propiedades."
-          getRowKey={(row) => row.id}
+          data={filteredHostBookings}
+          columns={getHostBookingColumns()}
+          emptyTitle={bookingsLoading ? "Cargando reservas..." : "Sin reservas"}
+          emptyDescription={bookingsLoading ? "" : "Aqui apareceran las reservas de tus propiedades."}
+          getRowKey={(row) => String(row.id)}
         />
+        {bookingsTotalPages > 1 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              Pagina {bookingsPage + 1} de {bookingsTotalPages}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={bookingsPage === 0 || bookingsLoading}
+                onClick={() => setBookingsPage((p) => p - 1)}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={bookingsPage >= bookingsTotalPages - 1 || bookingsLoading}
+                onClick={() => setBookingsPage((p) => p + 1)}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
