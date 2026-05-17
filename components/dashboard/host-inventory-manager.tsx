@@ -1,608 +1,688 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { CalendarCheck, Home, Layers3 } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+import { CalendarCheck, Layers3, MoreHorizontal, Search, Trash, Edit, History, X, FlaskConical } from "lucide-react"
+
 import { useToast } from "@/hooks/use-toast"
+import { getAccommodationById, type AccommodationDetailResponse } from "@/lib/api/accommodations"
+import {
+  createRentalPackage,
+  getRentalPackages,
+  updateRentalPackage,
+  deleteRentalPackage,
+  type RentalType,
+  type RentalPackageResponse,
+} from "@/lib/api/rental-packages"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { DataTable, type DataTableColumn } from "@/components/dashboard/data-table"
-import { StatusBadge } from "@/components/dashboard/status-badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
-type InventoryType = "HOME_ONLY" | "ROOMS_ONLY" | "BOTH"
-type UnitType = "HOME" | "ROOM"
+// ---------------------------------------------------------------------------
+// Persisted recent accommodations (localStorage)
+// ---------------------------------------------------------------------------
 
-interface InventoryPackage {
-  id: string
-  name: string
-  startDate: string
-  endDate: string
-  type: InventoryType
-  roomIds: string[]
-  status: "Active" | "Scheduled"
+const RECENT_KEY = "stayhub:host:recent_accommodations"
+const MAX_RECENT = 5
+
+interface RecentAccommodation {
+  id: number
+  title: string
+  city: string
 }
 
-interface ReservationRecord {
-  id: string
-  bookingCode: string
-  packageName: string
-  packageType: InventoryType
-  unitType: UnitType
-  roomId?: string
-  startDate: string
-  endDate: string
-  blockedHome: boolean
-  blockedRooms: "ALL" | string[]
-}
-
-const roomCatalog = [
-  { id: "R1", label: "Habitacion 1" },
-  { id: "R2", label: "Habitacion 2" },
-  { id: "R3", label: "Habitacion 3" },
-]
-
-const inventoryTypeOptions: Array<{ value: InventoryType; label: string; detail: string }> = [
-  {
-    value: "HOME_ONLY",
-    label: "Solo Casa Entera",
-    detail: "Una reserva bloquea la casa y todas las habitaciones.",
-  },
-  {
-    value: "ROOMS_ONLY",
-    label: "Solo Habitaciones",
-    detail: "Cada reserva bloquea solo las habitaciones seleccionadas.",
-  },
-  {
-    value: "BOTH",
-    label: "Ambas (Casa + Habitaciones)",
-    detail: "Reserva de habitacion bloquea casa entera en el mismo periodo y viceversa.",
-  },
-]
-
-const initialPackages: InventoryPackage[] = []
-
-function rangesOverlap(firstStart: string, firstEnd: string, secondStart: string, secondEnd: string) {
-  return firstStart <= secondEnd && secondStart <= firstEnd
-}
-
-function roomsIntersect(first: "ALL" | string[], second: "ALL" | string[]) {
-  if (first === "ALL" || second === "ALL") {
-    return true
+function loadRecent(): RecentAccommodation[] {
+  if (typeof window === "undefined") return []
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]")
+  } catch {
+    return []
   }
-
-  return first.some((room) => second.includes(room))
 }
 
-function getNextId(prefix: string, length: number) {
-  return `${prefix}-${length + 1}`
+function saveRecent(acc: AccommodationDetailResponse & { id: number }) {
+  const current = loadRecent().filter((r) => r.id !== acc.id)
+  const updated = [{ id: acc.id, title: acc.title, city: acc.city }, ...current].slice(0, MAX_RECENT)
+  localStorage.setItem(RECENT_KEY, JSON.stringify(updated))
 }
 
-export function HostPackagesView() {
+// ---------------------------------------------------------------------------
+// Mock data — only used in development via the "Demo" button
+// ---------------------------------------------------------------------------
+
+const MOCK_ACCOMMODATION: AccommodationDetailResponse & { id: number } = {
+  id: 42,
+  title: "Cabaña El Roble — Vista al Valle",
+  city: "Armenia",
+  description: "Cabaña campestre con vista panorámica al Valle del Quindío.",
+  capacity: 8,
+  pricePerNight: 180000,
+  locationDescription: "A 10 min del Parque del Café",
+  images: [],
+  available: true,
+  host: { id: 1, email: "host@stayhub.dev", fullName: "Carlos Ramírez" },
+}
+
+const MOCK_PACKAGES: RentalPackageResponse[] = [
+  {
+    id: 1,
+    accommodationId: 42,
+    type: "CASA_ENTERA",
+    startDate: "2026-06-01",
+    endDate: "2026-06-30",
+    price: "220000.00",
+    createdAt: "2026-05-01T10:00:00",
+    updatedAt: "2026-05-01T10:00:00",
+  },
+  {
+    id: 2,
+    accommodationId: 42,
+    type: "POR_HABITACIONES",
+    startDate: "2026-07-01",
+    endDate: "2026-07-31",
+    price: "95000.50",
+    createdAt: "2026-05-02T09:30:00",
+    updatedAt: "2026-05-10T14:15:00",
+  },
+  {
+    id: 3,
+    accommodationId: 42,
+    type: "AMBAS",
+    startDate: "2026-12-15",
+    endDate: "2026-12-31",
+    price: "350000.00",
+    createdAt: "2026-05-03T11:00:00",
+    updatedAt: "2026-05-03T11:00:00",
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Shared Zod schema
+// ---------------------------------------------------------------------------
+
+const packageSchema = z.object({
+  type: z.enum(["CASA_ENTERA", "POR_HABITACIONES", "AMBAS"], {
+    required_error: "Debes seleccionar un tipo de inventario.",
+  }),
+  startDate: z.string().min(1, "La fecha de inicio es requerida."),
+  endDate: z.string().min(1, "La fecha de fin es requerida."),
+  price: z
+    .string()
+    .min(1, "El precio es requerido.")
+    .refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0, {
+      message: "El precio debe ser un número mayor a 0.",
+    }),
+}).refine(
+  (data) => new Date(data.endDate) > new Date(data.startDate),
+  {
+    message: "La fecha final debe ser estrictamente posterior a la fecha de inicio.",
+    path: ["endDate"],
+  }
+)
+
+type PackageFormValues = z.infer<typeof packageSchema>
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const RENTAL_TYPE_LABELS: Record<RentalType, string> = {
+  CASA_ENTERA: "Casa Entera",
+  POR_HABITACIONES: "Por Habitaciones",
+  AMBAS: "Ambas Modalidades",
+}
+
+function formatPrice(price: string): string {
+  const numeric = parseFloat(price)
+  return isNaN(numeric)
+    ? `$${price}`
+    : `$${numeric.toLocaleString("es-CO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+// ---------------------------------------------------------------------------
+// Edit Dialog — fully isolated form, opens/closes cleanly
+// ---------------------------------------------------------------------------
+
+interface EditPackageDialogProps {
+  pkg: RentalPackageResponse | null
+  onClose: () => void
+  onSaved: () => void
+  accommodationId: number
+}
+
+function EditPackageDialog({ pkg, onClose, onSaved, accommodationId }: EditPackageDialogProps) {
   const { toast } = useToast()
-  const [packages, setPackages] = useState<InventoryPackage[]>(initialPackages)
-  const [reservations, setReservations] = useState<ReservationRecord[]>([])
+  const isOpen = pkg !== null
 
-  const [packageName, setPackageName] = useState("")
-  const [packageStartDate, setPackageStartDate] = useState("")
-  const [packageEndDate, setPackageEndDate] = useState("")
-  const [packageType, setPackageType] = useState<InventoryType | "">("")
-  const [packageRooms, setPackageRooms] = useState<string[]>([])
+  const form = useForm<PackageFormValues>({
+    resolver: zodResolver(packageSchema),
+    defaultValues: { type: "CASA_ENTERA", startDate: "", endDate: "", price: "" },
+  })
 
-  const [bookingCode, setBookingCode] = useState("")
-  const [reservationStartDate, setReservationStartDate] = useState("")
-  const [reservationEndDate, setReservationEndDate] = useState("")
-  const [reservationPackageId, setReservationPackageId] = useState("")
-  const [reservationUnitType, setReservationUnitType] = useState<UnitType | "">("")
-  const [reservationRoomId, setReservationRoomId] = useState("")
+  // Populate form whenever a package is selected for editing
+  useEffect(() => {
+    if (pkg) {
+      form.reset({
+        type: pkg.type,
+        startDate: pkg.startDate,
+        endDate: pkg.endDate,
+        price: pkg.price,
+      })
+    }
+  }, [pkg, form])
 
-  const selectedPackage = useMemo(
-    () => packages.find((inventoryPackage) => inventoryPackage.id === reservationPackageId),
-    [packages, reservationPackageId],
-  )
-
-  const packageColumns: DataTableColumn<InventoryPackage>[] = [
-    { id: "name", header: "Paquete", cell: (row) => row.name },
-    {
-      id: "type",
-      header: "Tipo inventario",
-      cell: (row) => {
-        const label = inventoryTypeOptions.find((option) => option.value === row.type)?.label ?? row.type
-        return <Badge variant="outline">{label}</Badge>
-      },
-    },
-    { id: "dates", header: "Rango", cell: (row) => `${row.startDate} -> ${row.endDate}` },
-    {
-      id: "rooms",
-      header: "Habitaciones",
-      cell: (row) => (row.roomIds.length ? row.roomIds.join(", ") : "No aplica"),
-    },
-    { id: "status", header: "Estado", cell: (row) => <StatusBadge value={row.status} /> },
-  ]
-
-  const reservationColumns: DataTableColumn<ReservationRecord>[] = [
-    { id: "booking", header: "Reserva", cell: (row) => row.bookingCode },
-    { id: "package", header: "Paquete", cell: (row) => row.packageName },
-    {
-      id: "unit",
-      header: "Unidad reservada",
-      cell: (row) =>
-        row.unitType === "HOME" ? "Casa Entera" : `Habitacion ${row.roomId ?? "sin definir"}`,
-    },
-    { id: "range", header: "Fechas", cell: (row) => `${row.startDate} -> ${row.endDate}` },
-    { id: "block-home", header: "Bloquea casa", cell: (row) => (row.blockedHome ? "Si" : "No") },
-    {
-      id: "block-rooms",
-      header: "Habitaciones bloqueadas",
-      cell: (row) => (row.blockedRooms === "ALL" ? "Todas" : row.blockedRooms.join(", ")),
-    },
-  ]
-
-  const blockedRanges = useMemo(
-    () =>
-      reservations.map((reservation) => ({
-        id: reservation.id,
-        range: `${reservation.startDate} -> ${reservation.endDate}`,
-        source: reservation.bookingCode,
-        scope: reservation.blockedRooms === "ALL" ? "Casa + Habitaciones" : reservation.blockedHome ? "Casa + habitacion" : "Habitacion",
-      })),
-    [reservations],
-  )
-
-  const resetPackageForm = () => {
-    setPackageName("")
-    setPackageStartDate("")
-    setPackageEndDate("")
-    setPackageType("")
-    setPackageRooms([])
+  const onSubmit = async (values: PackageFormValues) => {
+    if (!pkg) return
+    const res = await updateRentalPackage(accommodationId, pkg.id, values)
+    if (res.error) {
+      toast({ title: "Error al actualizar", description: res.error, variant: "destructive" })
+      return
+    }
+    toast({ title: "Paquete actualizado correctamente" })
+    onSaved()
+    onClose()
   }
 
-  const resetReservationForm = () => {
-    setBookingCode("")
-    setReservationStartDate("")
-    setReservationEndDate("")
-    setReservationPackageId("")
-    setReservationUnitType("")
-    setReservationRoomId("")
-  }
-
-  const handleCreatePackage = () => {
-    if (!packageName || !packageStartDate || !packageEndDate || !packageType) {
-      toast({ title: "Datos incompletos", description: "Nombre, fechas y tipo de inventario son obligatorios.", variant: "destructive" })
-      return
+  // Reset form on close so it's clean for the next edit
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      form.reset()
+      onClose()
     }
-
-    if (packageStartDate > packageEndDate) {
-      toast({ title: "Rango invalido", description: "La fecha final debe ser posterior a la inicial.", variant: "destructive" })
-      return
-    }
-
-    if (packageType === "ROOMS_ONLY" && packageRooms.length === 0) {
-      toast({ title: "Seleccion requerida", description: "En Solo Habitaciones debes elegir al menos una habitacion.", variant: "destructive" })
-      return
-    }
-
-    if (packageType === "BOTH" && packageRooms.length === 0) {
-      toast({ title: "Configura ambas modalidades", description: "En Ambas debes configurar casa entera y habitaciones.", variant: "destructive" })
-      return
-    }
-
-    const hasOverlap = packages.some((inventoryPackage) =>
-      rangesOverlap(packageStartDate, packageEndDate, inventoryPackage.startDate, inventoryPackage.endDate),
-    )
-
-    if (hasOverlap) {
-      toast({
-        title: "Conflicto de paquete",
-        description: "Ya existe un paquete en ese rango de fechas. Ajusta el rango o elimina el paquete anterior.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const newPackage: InventoryPackage = {
-      id: getNextId("pkg", packages.length),
-      name: packageName,
-      startDate: packageStartDate,
-      endDate: packageEndDate,
-      type: packageType,
-      roomIds: packageType === "HOME_ONLY" ? [] : packageRooms,
-      status: "Scheduled",
-    }
-
-    setPackages((current) => [newPackage, ...current])
-    resetPackageForm()
-    toast({ title: "Paquete creado", description: "El paquete fue guardado correctamente." })
-  }
-
-  const handleCreateReservation = () => {
-    if (!bookingCode || !reservationStartDate || !reservationEndDate || !reservationPackageId || !reservationUnitType) {
-      toast({ title: "Datos incompletos", description: "Completa codigo, fechas, paquete y tipo de reserva.", variant: "destructive" })
-      return
-    }
-
-    if (reservationStartDate > reservationEndDate) {
-      toast({ title: "Rango invalido", description: "La fecha final debe ser posterior a la inicial.", variant: "destructive" })
-      return
-    }
-
-    if (!selectedPackage) {
-      toast({ title: "Paquete no encontrado", description: "Selecciona un paquete valido para aplicar reglas de inventario.", variant: "destructive" })
-      return
-    }
-
-    if (reservationUnitType === "ROOM" && !reservationRoomId) {
-      toast({ title: "Habitacion requerida", description: "Debes escoger una habitacion para reserva por habitacion.", variant: "destructive" })
-      return
-    }
-
-    if (selectedPackage.type === "HOME_ONLY" && reservationUnitType !== "HOME") {
-      toast({
-        title: "Regla de paquete",
-        description: "Este paquete solo permite reservas de casa entera.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (selectedPackage.type === "ROOMS_ONLY" && reservationUnitType !== "ROOM") {
-      toast({
-        title: "Regla de paquete",
-        description: "Este paquete solo permite reservas por habitacion.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const reservationRangeFitsPackage = rangesOverlap(
-      reservationStartDate,
-      reservationEndDate,
-      selectedPackage.startDate,
-      selectedPackage.endDate,
-    )
-
-    if (!reservationRangeFitsPackage) {
-      toast({
-        title: "Fuera del paquete",
-        description: "La reserva debe estar dentro de un paquete activo en ese rango.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const blockedHome =
-      reservationUnitType === "HOME" || (selectedPackage.type === "BOTH" && reservationUnitType === "ROOM")
-    const blockedRooms: "ALL" | string[] =
-      reservationUnitType === "HOME"
-        ? "ALL"
-        : selectedPackage.type === "BOTH"
-          ? [reservationRoomId]
-          : [reservationRoomId]
-
-    const hasConflict = reservations.some((existingReservation) => {
-      const overlaps = rangesOverlap(
-        reservationStartDate,
-        reservationEndDate,
-        existingReservation.startDate,
-        existingReservation.endDate,
-      )
-
-      if (!overlaps) {
-        return false
-      }
-
-      if (blockedHome && existingReservation.blockedHome) {
-        return true
-      }
-
-      return roomsIntersect(blockedRooms, existingReservation.blockedRooms)
-    })
-
-    if (hasConflict) {
-      toast({
-        title: "Conflicto de inventario",
-        description: "La reserva entra en conflicto con un bloqueo existente para casa o habitaciones.",
-        variant: "destructive",
-      })
-      return
-    }
-
-    const newReservation: ReservationRecord = {
-      id: getNextId("res", reservations.length),
-      bookingCode,
-      packageName: selectedPackage.name,
-      packageType: selectedPackage.type,
-      unitType: reservationUnitType,
-      roomId: reservationUnitType === "ROOM" ? reservationRoomId : undefined,
-      startDate: reservationStartDate,
-      endDate: reservationEndDate,
-      blockedHome,
-      blockedRooms,
-    }
-
-    setReservations((current) => [newReservation, ...current])
-    resetReservationForm()
-
-    if (selectedPackage.type === "BOTH" && reservationUnitType === "ROOM") {
-      toast({
-        title: "Bloqueo cruzado aplicado",
-        description: "Reserva por habitacion en paquete Ambas: casa entera bloqueada para el mismo periodo.",
-      })
-      return
-    }
-
-    if (selectedPackage.type === "BOTH" && reservationUnitType === "HOME") {
-      toast({
-        title: "Bloqueo cruzado aplicado",
-        description: "Reserva de casa entera en paquete Ambas: se bloquearon todas las habitaciones.",
-      })
-      return
-    }
-
-    toast({ title: "Reserva agregada", description: "Reserva validada con reglas actuales de inventario." })
   }
 
   return (
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Edit className="size-4" />
+            Editar Paquete #{pkg?.id}
+          </DialogTitle>
+          <DialogDescription>
+            Modifica los campos que desees. Los cambios reemplazarán los valores actuales.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-2">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="startDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fecha Inicio</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="endDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fecha Fin</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo de Inventario</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona el tipo..." />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="CASA_ENTERA">Solo Casa Entera</SelectItem>
+                      <SelectItem value="POR_HABITACIONES">Solo Habitaciones</SelectItem>
+                      <SelectItem value="AMBAS">Ambas Modalidades</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="price"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Precio por noche</FormLabel>
+                  <FormControl>
+                    <Input type="text" inputMode="decimal" placeholder="150000.00" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex gap-2 pt-2">
+              <Button type="submit" className="flex-1">
+                Guardar Cambios
+              </Button>
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
+export function HostPackagesView() {
+  const { toast } = useToast()
+
+  // Accommodation selection
+  const [accommodationIdInput, setAccommodationIdInput] = useState("")
+  const [selectedAccommodation, setSelectedAccommodation] = useState<AccommodationDetailResponse | null>(null)
+  const [isLoadingAccommodation, setIsLoadingAccommodation] = useState(false)
+
+  // Recent accommodations history
+  const [recentAccommodations, setRecentAccommodations] = useState<RecentAccommodation[]>([])
+
+  // Packages list
+  const [packages, setPackages] = useState<RentalPackageResponse[]>([])
+  const [isLoadingPackages, setIsLoadingPackages] = useState(false)
+
+  // Edit dialog: holds the package being edited (null = closed)
+  const [editingPackage, setEditingPackage] = useState<RentalPackageResponse | null>(null)
+
+  // Create form
+  const createForm = useForm<PackageFormValues>({
+    resolver: zodResolver(packageSchema),
+    defaultValues: { type: "CASA_ENTERA", startDate: "", endDate: "", price: "" },
+  })
+
+  useEffect(() => {
+    setRecentAccommodations(loadRecent())
+  }, [])
+
+  // Dev-only: load mock data without backend
+  const loadDemoData = () => {
+    saveRecent(MOCK_ACCOMMODATION)
+    setRecentAccommodations(loadRecent())
+    setSelectedAccommodation(MOCK_ACCOMMODATION)
+    setAccommodationIdInput(String(MOCK_ACCOMMODATION.id))
+    setPackages(MOCK_PACKAGES)
+    toast({
+      title: "🧪 Datos de prueba cargados",
+      description: "Estás viendo datos simulados. El backend no fue contactado.",
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Load accommodation by ID
+  // -------------------------------------------------------------------------
+
+  const handleLoadAccommodation = async (idOverride?: number) => {
+    const id = idOverride ?? parseInt(accommodationIdInput)
+    if (isNaN(id) || id <= 0) {
+      toast({ title: "ID inválido", description: "Ingresa un ID numérico válido.", variant: "destructive" })
+      return
+    }
+
+    setIsLoadingAccommodation(true)
+    const res = await getAccommodationById(id)
+    setIsLoadingAccommodation(false)
+
+    if (res.error || !res.data) {
+      toast({
+        title: "No encontrado",
+        description: "No se encontró un alojamiento con ese ID o no tienes acceso.",
+        variant: "destructive",
+      })
+      setSelectedAccommodation(null)
+      setPackages([])
+      return
+    }
+
+    const accWithId = { ...res.data, id }
+    saveRecent(accWithId)
+    setRecentAccommodations(loadRecent())
+    setSelectedAccommodation(accWithId)
+    setAccommodationIdInput(String(id))
+    loadPackages(id)
+  }
+
+  // -------------------------------------------------------------------------
+  // Load packages
+  // -------------------------------------------------------------------------
+
+  const loadPackages = async (accId: number) => {
+    setIsLoadingPackages(true)
+    const res = await getRentalPackages(accId)
+    setIsLoadingPackages(false)
+    if (res.data) {
+      setPackages(res.data)
+    } else {
+      toast({ title: "Error", description: "No se pudieron cargar los paquetes.", variant: "destructive" })
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Create
+  // -------------------------------------------------------------------------
+
+  const onCreateSubmit = async (values: PackageFormValues) => {
+    if (!selectedAccommodation) return
+    const res = await createRentalPackage(selectedAccommodation.id, values)
+    if (res.error) {
+      toast({ title: "Error al crear", description: res.error, variant: "destructive" })
+      return
+    }
+    toast({ title: "Paquete creado correctamente" })
+    createForm.reset()
+    loadPackages(selectedAccommodation.id)
+  }
+
+  // -------------------------------------------------------------------------
+  // Delete
+  // -------------------------------------------------------------------------
+
+  const handleDelete = async (packageId: number) => {
+    if (!selectedAccommodation) return
+    const res = await deleteRentalPackage(selectedAccommodation.id, packageId)
+    if (res.error) {
+      toast({ title: "Error al eliminar", description: res.error, variant: "destructive" })
+      return
+    }
+    toast({ title: "Paquete eliminado" })
+    loadPackages(selectedAccommodation.id)
+  }
+
+  // -------------------------------------------------------------------------
+  // Table columns
+  // -------------------------------------------------------------------------
+
+  const packageColumns: DataTableColumn<RentalPackageResponse>[] = [
+    { id: "id", header: "ID", cell: (row) => row.id },
+    {
+      id: "type",
+      header: "Tipo",
+      cell: (row) => <Badge variant="outline">{RENTAL_TYPE_LABELS[row.type] ?? row.type}</Badge>,
+    },
+    {
+      id: "dates",
+      header: "Rango",
+      cell: (row) => `${row.startDate} — ${row.endDate}`,
+    },
+    {
+      id: "price",
+      header: "Precio / Noche",
+      cell: (row) => formatPrice(row.price),
+    },
+    {
+      id: "actions",
+      header: "",
+      cell: (row) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Opciones">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setEditingPackage(row)}>
+              <Edit className="mr-2 h-4 w-4" />
+              Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => handleDelete(row.id)}
+            >
+              <Trash className="mr-2 h-4 w-4" />
+              Eliminar
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
+
+  return (
     <div className="space-y-6">
+      {/* Accommodation selector */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Layers3 className="size-4" />
-            Paquetes de inventario
+            <Search className="size-5" />
+            Seleccionar Alojamiento
           </CardTitle>
           <CardDescription>
-            Crea paquetes por rango de fechas, define el tipo de inventario y simula reservas para validar reglas de bloqueo.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-6 lg:grid-cols-2">
-          <div className="space-y-4 rounded-xl border p-4">
-            <h3 className="font-medium">Crear paquete</h3>
-            <div className="space-y-2">
-              <Label htmlFor="package-name">Nombre paquete</Label>
-              <Input
-                id="package-name"
-                value={packageName}
-                placeholder="Ej. Temporada verano"
-                onChange={(event) => setPackageName(event.target.value)}
-              />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="package-start">Fecha inicio</Label>
-                <Input
-                  id="package-start"
-                  type="date"
-                  value={packageStartDate}
-                  onChange={(event) => setPackageStartDate(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="package-end">Fecha fin</Label>
-                <Input
-                  id="package-end"
-                  type="date"
-                  value={packageEndDate}
-                  onChange={(event) => setPackageEndDate(event.target.value)}
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Tipo de inventario (obligatorio)</Label>
-              <Select value={packageType} onValueChange={(value) => setPackageType(value as InventoryType)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona: Solo Casa / Solo Habitaciones / Ambas" />
-                </SelectTrigger>
-                <SelectContent>
-                  {inventoryTypeOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {packageType ? (
-                <p className="text-xs text-muted-foreground">
-                  {inventoryTypeOptions.find((option) => option.value === packageType)?.detail}
-                </p>
-              ) : null}
-            </div>
-
-            {packageType === "ROOMS_ONLY" || packageType === "BOTH" ? (
-              <div className="space-y-2">
-                <Label>Habitaciones habilitadas</Label>
-                <div className="grid gap-2 md:grid-cols-2">
-                  {roomCatalog.map((room) => (
-                    <label key={room.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
-                      <Checkbox
-                        checked={packageRooms.includes(room.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setPackageRooms((current) => [...current, room.id])
-                            return
-                          }
-                          setPackageRooms((current) => current.filter((roomId) => roomId !== room.id))
-                        }}
-                      />
-                      {room.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <Button onClick={handleCreatePackage} className="w-full">
-              Guardar paquete
-            </Button>
-          </div>
-
-          <div className="space-y-4 rounded-xl border p-4">
-            <h3 className="font-medium">Simular reserva</h3>
-            <div className="space-y-2">
-              <Label htmlFor="booking-code">Codigo reserva</Label>
-              <Input
-                id="booking-code"
-                value={bookingCode}
-                placeholder="Ej. STH-2201"
-                onChange={(event) => setBookingCode(event.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Paquete aplicado</Label>
-              <Select value={reservationPackageId} onValueChange={setReservationPackageId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona paquete" />
-                </SelectTrigger>
-                <SelectContent>
-                  {packages.map((inventoryPackage) => (
-                    <SelectItem key={inventoryPackage.id} value={inventoryPackage.id}>
-                      {inventoryPackage.name} ({inventoryPackage.type})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="reservation-start">Fecha inicio</Label>
-                <Input
-                  id="reservation-start"
-                  type="date"
-                  value={reservationStartDate}
-                  onChange={(event) => setReservationStartDate(event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="reservation-end">Fecha fin</Label>
-                <Input
-                  id="reservation-end"
-                  type="date"
-                  value={reservationEndDate}
-                  onChange={(event) => setReservationEndDate(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Unidad reservada</Label>
-              <Select value={reservationUnitType} onValueChange={(value) => setReservationUnitType(value as UnitType)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Casa entera o habitacion" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="HOME">Casa Entera</SelectItem>
-                  <SelectItem value="ROOM">Habitacion</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {reservationUnitType === "ROOM" ? (
-              <div className="space-y-2">
-                <Label>Habitacion</Label>
-                <Select value={reservationRoomId} onValueChange={setReservationRoomId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona habitacion" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {roomCatalog.map((room) => (
-                      <SelectItem key={room.id} value={room.id}>
-                        {room.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : null}
-
-            <Button onClick={handleCreateReservation} className="w-full" variant="outline">
-              Validar y agregar reserva
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="flex items-center gap-3 pt-6">
-            <CalendarCheck className="size-5" />
-            <div>
-              <p className="text-sm text-muted-foreground">Paquetes vigentes</p>
-              <p className="text-2xl font-semibold">{packages.length}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 pt-6">
-            <Home className="size-5" />
-            <div>
-              <p className="text-sm text-muted-foreground">Reservas con bloqueo casa</p>
-              <p className="text-2xl font-semibold">{reservations.filter((reservation) => reservation.blockedHome).length}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-3 pt-6">
-            <Layers3 className="size-5" />
-            <div>
-              <p className="text-sm text-muted-foreground">Bloqueos activos</p>
-              <p className="text-2xl font-semibold">{blockedRanges.length}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Paquetes por fecha y tipo</CardTitle>
-          <CardDescription>
-            Paquetes de disponibilidad creados por rango de fechas con selector obligatorio de tipo.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DataTable
-            data={packages}
-            columns={packageColumns}
-            emptyTitle="Sin paquetes creados"
-            emptyDescription="Crea un paquete para empezar a gestionar disponibilidad."
-            getRowKey={(row) => row.id}
-          />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Reservas y bloqueos resultantes</CardTitle>
-          <CardDescription>
-            Reservas simuladas con reglas de bloqueo aplicadas por tipo de paquete.
+            Ingresa el ID de tu alojamiento para gestionar sus paquetes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <DataTable
-            data={reservations}
-            columns={reservationColumns}
-            emptyTitle="Sin reservas simuladas"
-            emptyDescription="Agrega una reserva para validar reglas de bloqueo."
-            getRowKey={(row) => row.id}
-          />
+          <div className="flex gap-3 max-w-sm">
+            <Input
+              placeholder="ID de alojamiento..."
+              value={accommodationIdInput}
+              onChange={(e) => setAccommodationIdInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLoadAccommodation()}
+              type="number"
+              min={1}
+            />
+            <Button onClick={() => handleLoadAccommodation()} disabled={isLoadingAccommodation}>
+              {isLoadingAccommodation ? "Cargando..." : "Cargar"}
+            </Button>
+            {process.env.NODE_ENV === "development" && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={loadDemoData}
+                className="gap-1.5 border-dashed border-amber-400 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                title="Cargar datos de prueba (solo visible en desarrollo)"
+              >
+                <FlaskConical className="size-4" />
+                Demo
+              </Button>
+            )}
+          </div>
 
-          {blockedRanges.length > 0 ? (
-            <div className="rounded-xl border bg-muted/20 p-4 text-sm">
-              <p className="mb-2 font-medium">Bloqueos calculados</p>
-              <ul className="space-y-1 text-muted-foreground">
-                {blockedRanges.map((blockedRange) => (
-                  <li key={blockedRange.id}>
-                    {blockedRange.range} - {blockedRange.scope} ({blockedRange.source})
-                  </li>
+          {/* Recent accommodations */}
+          {recentAccommodations.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <History className="size-3" />
+                Alojamientos recientes
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {recentAccommodations.map((acc) => (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => handleLoadAccommodation(acc.id)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-foreground hover:bg-muted transition-colors"
+                  >
+                    <span className="font-mono text-muted-foreground">#{acc.id}</span>
+                    <span className="font-medium">{acc.title}</span>
+                    <span className="text-muted-foreground">· {acc.city}</span>
+                  </button>
                 ))}
-              </ul>
+              </div>
             </div>
-          ) : null}
+          )}
+
+          {/* Selected accommodation info */}
+          {selectedAccommodation && (
+            <div className="flex items-start justify-between p-4 border rounded-md bg-muted/20">
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Alojamiento seleccionado</p>
+                <p className="font-medium text-lg">{selectedAccommodation.title}</p>
+                <p className="text-sm text-muted-foreground">{selectedAccommodation.city}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setSelectedAccommodation(null); setPackages([]) }}
+                className="text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+                aria-label="Deseleccionar alojamiento"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {selectedAccommodation && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Create form — always available, never polluted by edit state */}
+          <Card className="h-fit">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Layers3 className="size-5" />
+                Nuevo Paquete
+              </CardTitle>
+              <CardDescription>
+                Define la disponibilidad y precios por temporada.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...createForm}>
+                <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <FormField
+                      control={createForm.control}
+                      name="startDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Fecha Inicio</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={createForm.control}
+                      name="endDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Fecha Fin</FormLabel>
+                          <FormControl><Input type="date" {...field} /></FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={createForm.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Inventario</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona el tipo..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="CASA_ENTERA">Solo Casa Entera</SelectItem>
+                            <SelectItem value="POR_HABITACIONES">Solo Habitaciones</SelectItem>
+                            <SelectItem value="AMBAS">Ambas Modalidades</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={createForm.control}
+                    name="price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Precio por noche</FormLabel>
+                        <FormControl>
+                          <Input type="text" inputMode="decimal" placeholder="150000.00" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button type="submit" className="w-full">
+                    Crear Paquete
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+
+          {/* Packages table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarCheck className="size-5" />
+                Paquetes Existentes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DataTable
+                data={packages}
+                columns={packageColumns}
+                emptyTitle={isLoadingPackages ? "Cargando..." : "Sin paquetes"}
+                emptyDescription={
+                  isLoadingPackages ? "" : "No hay paquetes configurados para este alojamiento."
+                }
+                getRowKey={(row) => String(row.id)}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Edit dialog — completely isolated, opens/closes cleanly */}
+      {selectedAccommodation && (
+        <EditPackageDialog
+          pkg={editingPackage}
+          accommodationId={selectedAccommodation.id}
+          onClose={() => setEditingPackage(null)}
+          onSaved={() => loadPackages(selectedAccommodation.id)}
+        />
+      )}
     </div>
   )
 }

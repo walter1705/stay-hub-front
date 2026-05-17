@@ -7,6 +7,7 @@ export interface AccommodationHost {
 }
 
 export interface AccommodationDetailResponse {
+  id: number
   host: AccommodationHost
   title: string
   description: string
