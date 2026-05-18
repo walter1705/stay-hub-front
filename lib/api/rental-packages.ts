@@ -1,28 +1,23 @@
 import { apiClient } from "@/lib/api/client";
 
-export type RentalType = "CASA_ENTERA" | "POR_HABITACIONES" | "AMBAS";
-
 export interface CreateRentalPackageRequest {
-  type: RentalType;
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
-  price: string; // BigDecimal — use string to avoid JS float precision loss
+  pricePerNight: string; // BigDecimal — use string to avoid JS float precision loss
 }
 
 export interface UpdateRentalPackageRequest {
-  type?: RentalType;
   startDate?: string;
   endDate?: string;
-  price?: string; // BigDecimal — use string to avoid JS float precision loss
+  pricePerNight?: string; // BigDecimal — use string to avoid JS float precision loss
 }
 
 export interface RentalPackageResponse {
   id: number;
   accommodationId: number;
-  type: RentalType;
   startDate: string;
   endDate: string;
-  price: string;
+  pricePerNight: string; // BigDecimal serialized as string
   createdAt: string;
   updatedAt: string;
 }

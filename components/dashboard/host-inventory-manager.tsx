@@ -13,15 +13,12 @@ import {
   getRentalPackages,
   updateRentalPackage,
   deleteRentalPackage,
-  type RentalType,
   type RentalPackageResponse,
 } from "@/lib/api/rental-packages"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { DataTable, type DataTableColumn } from "@/components/dashboard/data-table"
@@ -82,30 +79,27 @@ const MOCK_PACKAGES: RentalPackageResponse[] = [
   {
     id: 1,
     accommodationId: 42,
-    type: "CASA_ENTERA",
     startDate: "2026-06-01",
     endDate: "2026-06-30",
-    price: "220000.00",
+    pricePerNight: "220000.00",
     createdAt: "2026-05-01T10:00:00",
     updatedAt: "2026-05-01T10:00:00",
   },
   {
     id: 2,
     accommodationId: 42,
-    type: "POR_HABITACIONES",
     startDate: "2026-07-01",
     endDate: "2026-07-31",
-    price: "95000.50",
+    pricePerNight: "95000.50",
     createdAt: "2026-05-02T09:30:00",
     updatedAt: "2026-05-10T14:15:00",
   },
   {
     id: 3,
     accommodationId: 42,
-    type: "AMBAS",
     startDate: "2026-12-15",
     endDate: "2026-12-31",
-    price: "350000.00",
+    pricePerNight: "350000.00",
     createdAt: "2026-05-03T11:00:00",
     updatedAt: "2026-05-03T11:00:00",
   },
@@ -116,12 +110,9 @@ const MOCK_PACKAGES: RentalPackageResponse[] = [
 // ---------------------------------------------------------------------------
 
 const packageSchema = z.object({
-  type: z.enum(["CASA_ENTERA", "POR_HABITACIONES", "AMBAS"], {
-    required_error: "Debes seleccionar un tipo de inventario.",
-  }),
   startDate: z.string().min(1, "La fecha de inicio es requerida."),
   endDate: z.string().min(1, "La fecha de fin es requerida."),
-  price: z
+  pricePerNight: z
     .string()
     .min(1, "El precio es requerido.")
     .refine((v) => !isNaN(parseFloat(v)) && parseFloat(v) > 0, {
@@ -140,12 +131,6 @@ type PackageFormValues = z.infer<typeof packageSchema>
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const RENTAL_TYPE_LABELS: Record<RentalType, string> = {
-  CASA_ENTERA: "Casa Entera",
-  POR_HABITACIONES: "Por Habitaciones",
-  AMBAS: "Ambas Modalidades",
-}
 
 function formatPrice(price: string): string {
   const numeric = parseFloat(price)
@@ -171,17 +156,16 @@ function EditPackageDialog({ pkg, onClose, onSaved, accommodationId }: EditPacka
 
   const form = useForm<PackageFormValues>({
     resolver: zodResolver(packageSchema),
-    defaultValues: { type: "CASA_ENTERA", startDate: "", endDate: "", price: "" },
+    defaultValues: { startDate: "", endDate: "", pricePerNight: "" },
   })
 
   // Populate form whenever a package is selected for editing
   useEffect(() => {
     if (pkg) {
       form.reset({
-        type: pkg.type,
         startDate: pkg.startDate,
         endDate: pkg.endDate,
-        price: pkg.price,
+        pricePerNight: pkg.pricePerNight,
       })
     }
   }, [pkg, form])
@@ -252,30 +236,7 @@ function EditPackageDialog({ pkg, onClose, onSaved, accommodationId }: EditPacka
 
             <FormField
               control={form.control}
-              name="type"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tipo de Inventario</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecciona el tipo..." />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="CASA_ENTERA">Solo Casa Entera</SelectItem>
-                      <SelectItem value="POR_HABITACIONES">Solo Habitaciones</SelectItem>
-                      <SelectItem value="AMBAS">Ambas Modalidades</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="price"
+              name="pricePerNight"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Precio por noche</FormLabel>
@@ -327,7 +288,7 @@ export function HostPackagesView() {
   // Create form
   const createForm = useForm<PackageFormValues>({
     resolver: zodResolver(packageSchema),
-    defaultValues: { type: "CASA_ENTERA", startDate: "", endDate: "", price: "" },
+    defaultValues: { startDate: "", endDate: "", pricePerNight: "" },
   })
 
   useEffect(() => {
@@ -434,11 +395,6 @@ export function HostPackagesView() {
   const packageColumns: DataTableColumn<RentalPackageResponse>[] = [
     { id: "id", header: "ID", cell: (row) => row.id },
     {
-      id: "type",
-      header: "Tipo",
-      cell: (row) => <Badge variant="outline">{RENTAL_TYPE_LABELS[row.type] ?? row.type}</Badge>,
-    },
-    {
       id: "dates",
       header: "Rango",
       cell: (row) => `${row.startDate} — ${row.endDate}`,
@@ -446,7 +402,7 @@ export function HostPackagesView() {
     {
       id: "price",
       header: "Precio / Noche",
-      cell: (row) => formatPrice(row.price),
+      cell: (row) => formatPrice(row.pricePerNight),
     },
     {
       id: "actions",
@@ -608,30 +564,7 @@ export function HostPackagesView() {
 
                   <FormField
                     control={createForm.control}
-                    name="type"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Tipo de Inventario</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecciona el tipo..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="CASA_ENTERA">Solo Casa Entera</SelectItem>
-                            <SelectItem value="POR_HABITACIONES">Solo Habitaciones</SelectItem>
-                            <SelectItem value="AMBAS">Ambas Modalidades</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={createForm.control}
-                    name="price"
+                    name="pricePerNight"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Precio por noche</FormLabel>
