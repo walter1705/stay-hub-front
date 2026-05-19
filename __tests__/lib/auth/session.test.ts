@@ -110,9 +110,10 @@ describe("extractRoles", () => {
 
 describe("getSessionFromToken", () => {
   it("construye sesión válida con token no expirado", () => {
-    const token = makeJwt({ sub: "user@test.com", exp: FUTURE_EXP, roles: ["HOST"] })
+    const token = makeJwt({ sub: "user@test.com", userId: 42, exp: FUTURE_EXP, roles: ["HOST"] })
     const session = getSessionFromToken(token)
     expect(session).not.toBeNull()
+    expect(session?.userId).toBe(42)
     expect(session?.email).toBe("user@test.com")
     expect(session?.roles).toContain("HOST")
     expect(session?.isExpired).toBe(false)

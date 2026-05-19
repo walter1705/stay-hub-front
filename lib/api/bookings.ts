@@ -55,8 +55,9 @@ export async function createBooking(data: BookingRequest) {
 /** Returns paginated reservations for the authenticated user.
  *  HOST → all reservations across their accommodations.
  *  GUEST → their own reservations. */
-export async function getMyReservations(page = 0) {
+export async function getMyReservations(page = 0, scope?: "guest" | "host" | "all") {
+  const scopeParam = scope ? `&scope=${scope}` : ""
   return apiClient<PageResponse<ReservationSummary>>(
-    `/api/v2/bookings/my-reservations?page=${page}`
+    `/api/v2/bookings/my-reservations?page=${page}${scopeParam}`
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -276,7 +276,7 @@ export function HostPackagesView() {
   const [isLoadingAccommodation, setIsLoadingAccommodation] = useState(false)
 
   // Recent accommodations history
-  const [recentAccommodations, setRecentAccommodations] = useState<RecentAccommodation[]>([])
+  const [recentAccommodations, setRecentAccommodations] = useState<RecentAccommodation[]>(loadRecent)
 
   // Packages list
   const [packages, setPackages] = useState<RentalPackageResponse[]>([])
@@ -290,10 +290,6 @@ export function HostPackagesView() {
     resolver: zodResolver(packageSchema),
     defaultValues: { startDate: "", endDate: "", pricePerNight: "" },
   })
-
-  useEffect(() => {
-    setRecentAccommodations(loadRecent())
-  }, [])
 
   // Dev-only: load mock data without backend
   const loadDemoData = () => {

@@ -1,21 +1,28 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { AlertTriangle, Calendar, CheckCircle2, Circle, CircleDollarSign, Home, MessageSquare, Shield, Users, XCircle } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { AlertTriangle, Calendar, CheckCircle2, Circle, CircleDollarSign, Home, MessageSquare, Shield, Star, Users, XCircle } from "lucide-react"
 import { changePassword } from "@/lib/api/auth"
 import { deactivateAccommodation } from "@/lib/api/accommodations"
 import { getMyReservations, type ReservationSummary } from "@/lib/api/bookings"
+import {
+  canReviewReservation,
+  getAccommodationReviews,
+  createOwnerReviewResponse,
+  createReservationReview,
+  validateOwnerResponseInput,
+  validateReviewInput,
+  type Review,
+} from "@/lib/api/reviews"
 import { roleSegmentToAppRole, type DashboardRoleSegment, isDashboardRoleSegment } from "@/lib/dashboard/roles"
 import {
   type BookingRow,
   type PaymentRow,
   type PropertyRow,
-  type ReviewRow,
   type NotificationRow,
   type AdminUserRow,
   type AlertRow,
   type AuditRow,
-  type HostReviewRow,
 } from "@/lib/dashboard/mock-data"
 import { useToast } from "@/hooks/use-toast"
 import { useSession } from "@/hooks/use-session"
@@ -46,6 +53,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 
 interface RoleDashboardScreenProps {
   roleSegment: string
@@ -100,22 +108,9 @@ function getHostBookingColumns(): DataTableColumn<ReservationSummary>[] {
   ]
 }
 
-function getReviewColumns(): DataTableColumn<ReviewRow>[] {
-  return [
-    { id: "house", header: "Casa", cell: (row) => row.house },
-    { id: "rating", header: "Calificacion", cell: (row) => `${row.rating}/5` },
-    { id: "comment", header: "Comentario", cell: (row) => row.comment, className: "max-w-[320px] truncate" },
-    { id: "createdAt", header: "Fecha", cell: (row) => row.createdAt },
-    { id: "status", header: "Estado", cell: (row) => <StatusBadge value={row.status} /> },
-  ]
-}
-
 // Stable empty arrays — defined at module level so useMemo deps don't change on every render
-const EMPTY_BOOKINGS: BookingRow[] = []
 const EMPTY_PAYMENTS: PaymentRow[] = []
-const EMPTY_REVIEWS: ReviewRow[] = []
 const EMPTY_NOTIFICATIONS: NotificationRow[] = []
-const EMPTY_HOST_REVIEWS: HostReviewRow[] = []
 const EMPTY_USERS: AdminUserRow[] = []
 
 export function RoleDashboardScreen({ roleSegment, section }: RoleDashboardScreenProps) {
@@ -236,27 +231,270 @@ function ChangePasswordCard() {
   )
 }
 
+function formatDate(date: string) {
+  return new Date(date).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+function formatMoney(currency: string, amount: number) {
+  return `${currency} ${amount.toLocaleString("es-CO", { minimumFractionDigits: 2 })}`
+}
+
+function RatingStars({ rating }: { rating: number }) {
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-label={`Calificacion ${rating} de 5`}>
+      {Array.from({ length: 5 }, (_, index) => (
+        <Star
+          key={index}
+          className={`size-4 ${index < rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`}
+        />
+      ))}
+    </span>
+  )
+}
+
+async function getAllGuestReservations() {
+  const reservations: ReservationSummary[] = []
+  let page = 0
+  let hasMore = true
+
+  while (hasMore) {
+    const result = await getMyReservations(page, "guest")
+    if (result.error || !result.data) {
+      return { reservations, error: result.error }
+    }
+
+    reservations.push(...result.data.content)
+    hasMore = !result.data.last
+    page += 1
+  }
+
+  return { reservations }
+}
+
+async function getGuestReviewsFromReservations(userId: number) {
+  const { reservations, error } = await getAllGuestReservations()
+  if (error) {
+    return { reviews: [], error }
+  }
+
+  const accommodations = Array.from(
+    new Map(
+      reservations.map((reservation) => [reservation.accommodationId, reservation.accommodationTitle]),
+    ),
+  )
+
+  const results = await Promise.all(
+    accommodations.map(async ([accommodationId, accommodationTitle]) => {
+      const result = await getAccommodationReviews(accommodationId)
+      return { result, accommodationTitle }
+    }),
+  )
+
+  const failed = results.find(({ result }) => result.error)
+  if (failed?.result.error) {
+    return { reviews: [], error: failed.result.error }
+  }
+
+  const reviews = results
+    .flatMap(({ result, accommodationTitle }) =>
+      (result.data ?? []).map((review) => ({ ...review, accommodationTitle })),
+    )
+    .filter((review) => review.guestId === userId)
+
+  return { reviews }
+}
+
+function GuestReviewForm({ reservation, onCreated }: { reservation: ReservationSummary; onCreated: (review: Review) => void }) {
+  const { toast } = useToast()
+  const [rating, setRating] = useState(5)
+  const [comment, setComment] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSubmit = useCallback(async () => {
+    const validationError = validateReviewInput({ rating, comment })
+    if (validationError) {
+      toast({ title: "Revisa tu comentario", description: validationError, variant: "destructive" })
+      return
+    }
+
+    setIsSaving(true)
+    const result = await createReservationReview(reservation.id, { accommodationId: reservation.accommodationId, rating, comment })
+    setIsSaving(false)
+
+    if (result.error || !result.data) {
+      toast({ title: "No se pudo publicar el comentario", description: result.error, variant: "destructive" })
+      return
+    }
+
+    setComment("")
+    setRating(5)
+    onCreated(result.data)
+    toast({ title: "Comentario publicado correctamente" })
+  }, [comment, onCreated, rating, reservation.accommodationId, reservation.id, toast])
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Dejar comentario y calificacion</CardTitle>
+        <CardDescription>Disponible para reservas completadas o estadias pasadas.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="review-rating">Calificacion</Label>
+          <div className="flex flex-wrap gap-2">
+            {[1, 2, 3, 4, 5].map((value) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={rating === value ? "default" : "outline"}
+                onClick={() => setRating(value)}
+              >
+                {value}
+              </Button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="review-comment">Comentario</Label>
+          <Textarea
+            id="review-comment"
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+            placeholder="Cuenta como fue tu estadia..."
+            rows={4}
+          />
+        </div>
+        <Button onClick={handleSubmit} disabled={isSaving}>
+          {isSaving ? "Publicando..." : "Publicar comentario"}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+function HostReviewResponseCard({ review, onResponded }: { review: Review; onResponded: (review: Review) => void }) {
+  const { toast } = useToast()
+  const [response, setResponse] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSubmit = useCallback(async () => {
+    const validationError = validateOwnerResponseInput(response)
+    if (validationError) {
+      toast({ title: "Revisa tu respuesta", description: validationError, variant: "destructive" })
+      return
+    }
+
+    setIsSaving(true)
+    const result = await createOwnerReviewResponse(review.id, { response })
+    setIsSaving(false)
+
+    if (result.error || !result.data) {
+      toast({ title: "No se pudo responder", description: result.error, variant: "destructive" })
+      return
+    }
+
+    setResponse("")
+    onResponded(result.data)
+    toast({ title: "Respuesta publicada correctamente" })
+  }, [onResponded, response, review.id, toast])
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="text-base">{review.accommodationTitle}</CardTitle>
+            <CardDescription>
+              {review.guestName ?? "Huesped"} · {formatDate(review.createdAt)}
+            </CardDescription>
+          </div>
+          <RatingStars rating={review.rating} />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="rounded-lg border bg-muted/30 p-3 text-sm">{review.comment}</p>
+        {review.hostResponse ? (
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-950 dark:border-green-900 dark:bg-green-950/30 dark:text-green-100">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide">Respuesta del propietario</p>
+            <p>{review.hostResponse}</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Label htmlFor={`owner-response-${review.id}`}>Responder comentario</Label>
+            <Textarea
+              id={`owner-response-${review.id}`}
+              value={response}
+              onChange={(event) => setResponse(event.target.value)}
+              placeholder="Agradece, aclara o da seguimiento al comentario..."
+              rows={3}
+            />
+            <Button size="sm" onClick={handleSubmit} disabled={isSaving}>
+              {isSaving ? "Respondiendo..." : "Responder"}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Guest
 // ---------------------------------------------------------------------------
 
 function GuestDashboard({ section }: { section?: string }) {
   const { session } = useSession()
+  const { toast } = useToast()
   const [query, setQuery] = useState("")
   const [status, setStatus] = useState("all")
   const [selectedPayment, setSelectedPayment] = useState<PaymentRow | null>(null)
+  const [guestBookings, setGuestBookings] = useState<ReservationSummary[]>([])
+  const [guestBookingsLoading, setGuestBookingsLoading] = useState(false)
+  const [selectedBooking, setSelectedBooking] = useState<ReservationSummary | null>(null)
+  const [guestReviews, setGuestReviews] = useState<Review[]>([])
+  const [guestReviewsLoading, setGuestReviewsLoading] = useState(false)
 
-  const bookings = EMPTY_BOOKINGS
   const payments = EMPTY_PAYMENTS
-  const reviews = EMPTY_REVIEWS
+
+  useEffect(() => {
+    if (section !== "bookings") return
+    Promise.resolve().then(() => setGuestBookingsLoading(true))
+    getMyReservations(0, "guest").then((result) => {
+      if (result.data) {
+        setGuestBookings(result.data.content)
+      } else if (result.error) {
+        toast({ title: "No se pudieron cargar tus reservas", description: result.error, variant: "destructive" })
+      }
+      setGuestBookingsLoading(false)
+    })
+  }, [section, toast])
+
+  useEffect(() => {
+    if (section !== "reviews") return
+    if (!session?.userId) {
+      Promise.resolve().then(() => setGuestReviews([]))
+      return
+    }
+
+    Promise.resolve().then(() => setGuestReviewsLoading(true))
+    getGuestReviewsFromReservations(session.userId).then(({ reviews, error }) => {
+      if (error) {
+        toast({ title: "No se pudieron cargar tus comentarios", description: error, variant: "destructive" })
+      }
+
+      setGuestReviews(reviews)
+      setGuestReviewsLoading(false)
+    })
+  }, [section, session?.userId, toast])
 
   const filteredBookings = useMemo(
-    () => bookings.filter((b) => {
+    () => guestBookings.filter((b) => {
       const q = query.toLowerCase()
-      return (b.code.toLowerCase().includes(q) || b.house.toLowerCase().includes(q)) &&
+      return (`#${b.id}`.includes(q) || b.accommodationTitle.toLowerCase().includes(q)) &&
         (status === "all" || b.status.toLowerCase() === status)
     }),
-    [bookings, query, status],
+    [guestBookings, query, status],
   )
 
   const filteredPayments = useMemo(
@@ -268,13 +506,21 @@ function GuestDashboard({ section }: { section?: string }) {
   )
 
   const filteredReviews = useMemo(
-    () => reviews.filter((r) => {
+    () => guestReviews.filter((review) => {
       const q = query.toLowerCase()
-      return (r.house.toLowerCase().includes(q) || r.comment.toLowerCase().includes(q)) &&
-        (status === "all" || r.status.toLowerCase() === status)
+      return (review.accommodationTitle ?? "").toLowerCase().includes(q) ||
+        review.comment.toLowerCase().includes(q) ||
+        (review.hostResponse ?? "").toLowerCase().includes(q)
     }),
-    [reviews, query, status],
+    [guestReviews, query],
   )
+
+  const handleGuestReviewCreated = useCallback((review: Review) => {
+    setGuestReviews((current) => [
+      { ...review, accommodationTitle: selectedBooking?.accommodationTitle ?? review.accommodationTitle },
+      ...current.filter((item) => item.id !== review.id),
+    ])
+  }, [selectedBooking?.accommodationTitle])
 
   if (!section) {
     const today = new Date()
@@ -361,24 +607,77 @@ function GuestDashboard({ section }: { section?: string }) {
         <TableFilters
           searchValue={query}
           onSearchChange={setQuery}
-          searchPlaceholder="Buscar por codigo o casa"
+          searchPlaceholder="Buscar por reserva o casa"
           statusValue={status}
           onStatusChange={setStatus}
           statuses={[
             { value: "all", label: "Todos" },
-            { value: "confirmed", label: "Confirmada" },
-            { value: "pending", label: "Pendiente" },
             { value: "completed", label: "Completada" },
+            { value: "active", label: "Activa" },
             { value: "cancelled", label: "Cancelada" },
           ]}
         />
         <DataTable
           data={filteredBookings}
-          columns={getBookingColumns()}
-          emptyTitle="Sin reservas"
-          emptyDescription="Todavia no tienes reservas registradas."
-          getRowKey={(row) => row.id}
+          columns={[
+            { id: "id", header: "Reserva #", cell: (row) => `#${row.id}` },
+            { id: "house", header: "Casa", cell: (row) => row.accommodationTitle },
+            { id: "checkIn", header: "Check-in", cell: (row) => formatDate(row.startDate) },
+            { id: "checkOut", header: "Check-out", cell: (row) => formatDate(row.endDate) },
+            { id: "amount", header: "Total", cell: (row) => formatMoney(row.currency, row.totalPrice) },
+            { id: "status", header: "Estado", cell: (row) => <StatusBadge value={row.status} /> },
+            {
+              id: "detail",
+              header: "Detalle",
+              cell: (row) => (
+                <Button size="sm" variant="outline" onClick={() => setSelectedBooking(row)}>
+                  Ver detalle
+                </Button>
+              ),
+            },
+          ]}
+          emptyTitle={guestBookingsLoading ? "Cargando reservas..." : "Sin reservas"}
+          emptyDescription={guestBookingsLoading ? "" : "Todavia no tienes reservas registradas."}
+          getRowKey={(row) => String(row.id)}
         />
+        {selectedBooking ? (
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <CardTitle>Reserva #{selectedBooking.id}</CardTitle>
+                  <CardDescription>{selectedBooking.accommodationTitle}</CardDescription>
+                </div>
+                <StatusBadge value={selectedBooking.status} />
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
+              <div className="space-y-3 text-sm">
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Check-in</p>
+                  <p className="font-medium">{formatDate(selectedBooking.startDate)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Check-out</p>
+                  <p className="font-medium">{formatDate(selectedBooking.endDate)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-xs text-muted-foreground">Total</p>
+                  <p className="font-medium">{formatMoney(selectedBooking.currency, selectedBooking.totalPrice)}</p>
+                </div>
+              </div>
+              {canReviewReservation(selectedBooking.status, selectedBooking.endDate) ? (
+                <GuestReviewForm reservation={selectedBooking} onCreated={handleGuestReviewCreated} />
+              ) : (
+                <Alert>
+                  <MessageSquare className="h-4 w-4" />
+                  <AlertTitle>Comentario no disponible aun</AlertTitle>
+                  <AlertDescription>Podras comentar cuando la estadia haya finalizado.</AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     )
   }
@@ -444,16 +743,20 @@ function GuestDashboard({ section }: { section?: string }) {
           onStatusChange={setStatus}
           statuses={[
             { value: "all", label: "Todos" },
-            { value: "published", label: "Publicado" },
-            { value: "pending", label: "Pendiente" },
           ]}
         />
         <DataTable
           data={filteredReviews}
-          columns={getReviewColumns()}
-          emptyTitle="Sin comentarios"
-          emptyDescription="Aqui apareceran tus comentarios sobre alojamientos."
-          getRowKey={(row) => row.id}
+          columns={[
+            { id: "house", header: "Casa", cell: (row) => row.accommodationTitle ?? `Alojamiento #${row.accommodationId}` },
+            { id: "rating", header: "Calificacion", cell: (row) => <RatingStars rating={row.rating} /> },
+            { id: "comment", header: "Comentario", cell: (row) => row.comment, className: "max-w-[320px] truncate" },
+            { id: "response", header: "Respuesta", cell: (row) => row.hostResponse ?? "Sin respuesta", className: "max-w-[260px] truncate" },
+            { id: "createdAt", header: "Fecha", cell: (row) => formatDate(row.createdAt) },
+          ]}
+          emptyTitle={guestReviewsLoading ? "Cargando comentarios..." : "Sin comentarios"}
+          emptyDescription={guestReviewsLoading ? "" : "Aqui apareceran tus comentarios sobre alojamientos."}
+          getRowKey={(row) => String(row.id)}
         />
       </div>
     )
@@ -513,7 +816,8 @@ function HostDashboard({ section }: { section?: string }) {
   const [properties, setProperties] = useState<PropertyRow[]>([])
 
   const notifications = EMPTY_NOTIFICATIONS
-  const reviews = EMPTY_HOST_REVIEWS
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
 
   // --- Bookings (real API) ---
   const [hostBookings, setHostBookings] = useState<ReservationSummary[]>([])
@@ -523,8 +827,8 @@ function HostDashboard({ section }: { section?: string }) {
 
   useEffect(() => {
     if (section !== "bookings") return
-    setBookingsLoading(true)
-    getMyReservations(bookingsPage).then((result) => {
+    Promise.resolve().then(() => setBookingsLoading(true))
+    getMyReservations(bookingsPage, "host").then((result) => {
       if (result.data) {
         setHostBookings(result.data.content)
         setBookingsTotalPages(result.data.totalPages)
@@ -532,6 +836,50 @@ function HostDashboard({ section }: { section?: string }) {
       setBookingsLoading(false)
     })
   }, [section, bookingsPage])
+
+  useEffect(() => {
+    if (section !== "reviews") return
+    Promise.resolve().then(() => setReviewsLoading(true))
+    getMyReservations(0, "host").then(async (reservationsResult) => {
+      if (reservationsResult.error || !reservationsResult.data) {
+        toast({ title: "No se pudieron cargar tus propiedades con reservas", description: reservationsResult.error, variant: "destructive" })
+        setReviewsLoading(false)
+        return
+      }
+
+      const accommodations = Array.from(
+        new Map(
+          reservationsResult.data.content.map((reservation) => [
+            reservation.accommodationId,
+            reservation.accommodationTitle,
+          ]),
+        ),
+      )
+
+      const results = await Promise.all(
+        accommodations.map(async ([accommodationId, accommodationTitle]) => {
+          const result = await getAccommodationReviews(accommodationId)
+          return { result, accommodationTitle }
+        }),
+      )
+
+      const failed = results.find(({ result }) => result.error)
+      if (failed?.result.error) {
+        toast({ title: "No se pudieron cargar los comentarios", description: failed.result.error, variant: "destructive" })
+      }
+
+      setReviews(
+        results.flatMap(({ result, accommodationTitle }) =>
+          (result.data ?? []).map((review) => ({ ...review, accommodationTitle })),
+        ),
+      )
+      setReviewsLoading(false)
+    })
+  }, [section, toast])
+
+  const handleHostReviewResponded = useCallback((updatedReview: Review) => {
+    setReviews((current) => current.map((review) => (review.id === updatedReview.id ? updatedReview : review)))
+  }, [])
 
   const filteredProperties = useMemo(
     () => properties.filter((p) => {
@@ -740,19 +1088,20 @@ function HostDashboard({ section }: { section?: string }) {
     return (
       <div className="space-y-6">
         <PageHeader title="Comentarios recibidos" description="Valoraciones de huespedes sobre tus propiedades." />
-        <DataTable
-          data={reviews}
-          columns={[
-            { id: "guest", header: "Huesped", cell: (row) => row.guest },
-            { id: "house", header: "Propiedad", cell: (row) => row.house },
-            { id: "rating", header: "Calificacion", cell: (row) => `${row.rating}/5` },
-            { id: "comment", header: "Comentario", cell: (row) => row.comment, className: "max-w-[320px] truncate" },
-            { id: "createdAt", header: "Fecha", cell: (row) => row.createdAt },
-          ]}
-          emptyTitle="Sin comentarios"
-          emptyDescription="Aqui apareceran los comentarios de tus huespedes."
-          getRowKey={(row) => row.id}
-        />
+        {reviews.length > 0 ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            {reviews.map((review) => (
+              <HostReviewResponseCard key={review.id} review={review} onResponded={handleHostReviewResponded} />
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>{reviewsLoading ? "Cargando comentarios..." : "Sin comentarios"}</CardTitle>
+              <CardDescription>{reviewsLoading ? "" : "Aqui apareceran los comentarios de tus huespedes."}</CardDescription>
+            </CardHeader>
+          </Card>
+        )}
       </div>
     )
   }

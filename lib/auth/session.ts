@@ -4,6 +4,7 @@ export type AppRole = "GUEST" | "HOST" | "ADMIN"
 
 export interface AuthSession {
   token: string
+  userId?: number
   roles: AppRole[]
   email?: string
   expiresAt?: number
@@ -12,6 +13,7 @@ export interface AuthSession {
 
 type JwtPayload = {
   sub?: string
+  userId?: number
   exp?: number
   email?: string
   role?: string | string[]
@@ -127,6 +129,7 @@ export function getSessionFromToken(token: string): AuthSession | null {
 
   return {
     token,
+    userId: payload?.userId,
     roles,
     email: payload?.email ?? payload?.sub,
     expiresAt,
